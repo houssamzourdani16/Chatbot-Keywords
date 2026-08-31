@@ -11,7 +11,7 @@ import {
   failBatch,
 } from "@/lib/services/batch-service";
 import { processMessageKeywords } from "@/lib/services/google-sheets";
-import { getKeywordsForList } from "@/lib/services/keyword-list-service";
+import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processLeadDetection } from "@/lib/services/lead-service";
 import { sendToN8N } from "@/lib/services/n8n-client";
 import Product from "@/lib/models/product";
@@ -82,46 +82,50 @@ export async function GET(request) {
           //    look up meanings in the product's selected
           //    keyword list (Google Sheet), and append any
           //    unfound keywords to the new sheet.
+          //    (Steps 7 & 8: build full_conversation + all
+          //     detected keywords + keyword_data.)
           // ============================================
           let keywordResults = { found: [], unfound: [] };
+          let allDetectedKeywords = [];
+          let allKeywordData = {};
           try {
-            const allText = conversation.map((c) => c.message || "").join(" ");
+            // ✅ STEP 7: Join all messages into one string
+            const allText = conversation
+              .map((c) => c.message || c.incoming_message || "")
+              .join(" ");
 
             // Resolve the product's selected keyword list
             const product = await Product.findById(batch.product_id).lean();
-            const keywordListId = product?.keyword_list_id;
 
-            if (keywordListId) {
-              // Use the product's specific keyword list
-              const { keywords } = await getKeywordsForList(
-                keywordListId.toString(),
-              );
-              const words = allText
-                .toLowerCase()
-                .replace(/[^\p{L}\p{N}\s]/gu, " ")
-                .split(/\s+/)
-                .filter((w) => w.length > 1);
-
-              const found = [];
-              const unfound = [];
-              for (const word of [...new Set(words)]) {
-                const match = keywords.find(
-                  (k) => k.keyword.toLowerCase() === word,
-                );
-                if (match) {
-                  found.push({
-                    keyword: word,
-                    category: match.category,
-                    listName: product.name,
-                  });
-                } else {
-                  unfound.push(word);
-                }
-              }
-              keywordResults = { found, unfound };
+            // If the product has its own keyword list, use the shared
+            // detection service so per-message AND batch detection agree.
+            if (product?.keyword_list_id) {
+              const detection = await detectKeywordsForProduct({
+                productId: batch.product_id,
+                message: allText,
+                productOverride: product,
+              });
+              keywordResults = {
+                found: detection.found,
+                unfound: detection.unfound || [],
+              };
+              allDetectedKeywords = detection.detected_keywords || [];
+              allKeywordData = detection.keyword_data || {};
             } else {
               // Fall back to the global master sheet
               keywordResults = await processMessageKeywords(allText);
+              allDetectedKeywords = keywordResults.found.map((k) => k.keyword);
+              keywordResults.found.forEach((k) => {
+                allKeywordData[k.keyword] = {
+                  keyword: k.keyword,
+                  category: k.category,
+                  meaning: k.meaning || "",
+                  priority: k.priority || "Medium",
+                  language: k.language || "Darija",
+                  listName: product?.name || "",
+                };
+              });
+              allKeywordData = allKeywordData || {};
             }
           } catch (kwError) {
             // Non-fatal: keyword detection should not block message sending
@@ -201,7 +205,14 @@ export async function GET(request) {
               batch_id: batch._id,
               waiting_time: batch.waiting_time,
               message_count: conversation.length,
-              // ✅ Include keyword detection results for n8n
+              // ✅ STEP 7: Full joined conversation string
+              full_conversation: conversation
+                .map((c) => c.message || c.incoming_message || "")
+                .join(" "),
+              // ✅ All keywords detected across the whole batch
+              detected_keywords: allDetectedKeywords,
+              keyword_data: allKeywordData,
+              // ✅ Detailed keyword detection results for n8n
               keywords_detected: keywordResults.found,
               unfound_keywords: keywordResults.unfound,
               // ✅ Include lead detection result for n8n

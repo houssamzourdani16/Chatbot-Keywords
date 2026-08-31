@@ -1141,7 +1141,7 @@ export default function DashboardPage() {
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setEditingProduct(null)}
           />
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-900">
               ✏️ Edit {editingProduct.name}
             </h3>
@@ -1149,14 +1149,16 @@ export default function DashboardPage() {
               action={handleEdit}
               className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
             >
+              {/* Basics */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
-                  Name
+                  Product Name
                 </label>
                 <input
                   type="text"
                   name="name"
                   defaultValue={editingProduct.name}
+                  required
                   className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
@@ -1168,6 +1170,7 @@ export default function DashboardPage() {
                   type="number"
                   name="price"
                   defaultValue={editingProduct.price}
+                  required
                   className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
@@ -1179,6 +1182,18 @@ export default function DashboardPage() {
                   type="number"
                   name="quantity"
                   defaultValue={editingProduct.quantity}
+                  required
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Compare Price (optional)
+                </label>
+                <input
+                  type="number"
+                  name="compare_price"
+                  defaultValue={editingProduct.compare_price ?? ""}
                   className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
@@ -1195,7 +1210,19 @@ export default function DashboardPage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
-                  Waiting Time (s)
+                  Arabic Description
+                </label>
+                <input
+                  type="text"
+                  name="description_ar"
+                  defaultValue={editingProduct.description_ar}
+                  dir="rtl"
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Waiting Time (seconds)
                 </label>
                 <input
                   type="number"
@@ -1206,6 +1233,333 @@ export default function DashboardPage() {
                   className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                 />
               </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Status
+                </label>
+                <select
+                  name="status"
+                  defaultValue={editingProduct.status || "Active"}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="Coming Soon">Coming Soon</option>
+                </select>
+              </div>
+
+              {/* Classification */}
+              <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                <p className="text-sm font-semibold text-slate-700">
+                  🏷 Classification
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Category
+                </label>
+                <select
+                  name="category"
+                  defaultValue={editingProduct.category || ""}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">None</option>
+                  <option value="Clothing">Clothing</option>
+                  <option value="Accessories">Accessories</option>
+                  <option value="Footwear">Footwear</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Subcategory
+                </label>
+                <input
+                  type="text"
+                  name="subcategory"
+                  defaultValue={editingProduct.subcategory}
+                  placeholder="e.g. Hijabs/Dresses/Shirts"
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Name (Arabic)
+                </label>
+                <input
+                  type="text"
+                  name="name_ar"
+                  defaultValue={editingProduct.name_ar}
+                  dir="rtl"
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Name (French)
+                </label>
+                <input
+                  type="text"
+                  name="name_fr"
+                  defaultValue={editingProduct.name_fr}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              {/* Stock */}
+              <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                <p className="text-sm font-semibold text-slate-700">📦 Stock</p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Stock Status
+                </label>
+                <select
+                  name="stock_status"
+                  defaultValue={editingProduct.stock_status || "High"}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                  <option value="Out">Out of Stock</option>
+                  <option value="Preorder">Preorder</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Min Quantity per Order
+                </label>
+                <input
+                  type="number"
+                  name="min_quantity"
+                  min="1"
+                  defaultValue={editingProduct.min_quantity || 1}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              {/* Supply */}
+              <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                <p className="text-sm font-semibold text-slate-700">
+                  🔧 Supply &amp; Materials
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  SKU Base
+                </label>
+                <input
+                  type="text"
+                  name="sku_base"
+                  defaultValue={editingProduct.sku_base}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Barcode
+                </label>
+                <input
+                  type="text"
+                  name="barcode"
+                  defaultValue={editingProduct.barcode}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Supplier
+                </label>
+                <input
+                  type="text"
+                  name="supplier"
+                  defaultValue={editingProduct.supplier}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Reorder Point
+                </label>
+                <input
+                  type="text"
+                  name="reorder_point"
+                  defaultValue={editingProduct.reorder_point}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Location / Storage
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  defaultValue={editingProduct.location}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Material
+                </label>
+                <input
+                  type="text"
+                  name="material"
+                  defaultValue={editingProduct.material}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Origin
+                </label>
+                <input
+                  type="text"
+                  name="origin"
+                  defaultValue={editingProduct.origin}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Weight
+                </label>
+                <input
+                  type="text"
+                  name="weight"
+                  defaultValue={editingProduct.weight}
+                  placeholder="e.g. 300g"
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Care Instructions
+                </label>
+                <input
+                  type="text"
+                  name="care"
+                  defaultValue={editingProduct.care}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 sm:col-span-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Warranty
+                </label>
+                <input
+                  type="text"
+                  name="warranty"
+                  defaultValue={editingProduct.warranty}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              {/* Marketing */}
+              <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                <p className="text-sm font-semibold text-slate-700">
+                  💝 Marketing &amp; Selling
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  USP / Unique Selling Proposition
+                </label>
+                <input
+                  type="text"
+                  name="usp"
+                  defaultValue={editingProduct.usp}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Target Audience
+                </label>
+                <input
+                  type="text"
+                  name="target_audience"
+                  defaultValue={editingProduct.target_audience}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Season
+                </label>
+                <select
+                  name="season"
+                  defaultValue={editingProduct.season || "All"}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="All">All</option>
+                  <option value="Summer">Summer</option>
+                  <option value="Winter">Winter</option>
+                  <option value="Ramadan">Ramadan</option>
+                  <option value="Eid">Eid</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  Occasion
+                </label>
+                <input
+                  type="text"
+                  name="occasion"
+                  defaultValue={editingProduct.occasion}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              {/* AI & Keywords */}
+              <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                <p className="text-sm font-semibold text-slate-700">
+                  🤖 AI Model &amp; Keyword List
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  🤖 AI Model
+                </label>
+                <select
+                  name="webhook_model_id"
+                  defaultValue={editingProduct.webhook_model_id || ""}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">Select an AI model...</option>
+                  {webhooks.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                      {w.description ? ` — ${w.description}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  🔑 Keyword List
+                </label>
+                <select
+                  name="keyword_list_id"
+                  defaultValue={editingProduct.keyword_list_id || ""}
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">Select a keyword list...</option>
+                  {keywordLists.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                      {k.dialect ? ` — ${k.dialect}` : ""}
+                      {k.stats?.total_keywords
+                        ? ` (${k.stats.total_keywords} keywords)`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Actions */}
               <div className="flex items-end justify-end gap-3 sm:col-span-2">
                 <button
                   type="button"

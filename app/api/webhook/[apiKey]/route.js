@@ -4,6 +4,7 @@ import dbConnect from "@/lib/database/database";
 import Product from "@/lib/models/product";
 import User from "@/lib/models/user";
 import { addMessageToBatch } from "@/lib/services/batch-service";
+import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 
 // ============================================
 // ✅ FASTER PROCESSING
@@ -68,7 +69,29 @@ export async function POST(request, { params }) {
     }
 
     // ============================================
-    // ✅ 4. Add message to a debounced batch
+    // ✅ 4. Detect keywords (Step 5 of the spec)
+    //    Check the message against the product's
+    //    linked keyword list (Google Sheet) and
+    //    store the detected keywords + full row data
+    //    on the message record itself.
+    // ============================================
+    let detectedKeywords = [];
+    let keywordData = {};
+    try {
+      const detection = await detectKeywordsForProduct({
+        productId: product._id,
+        message,
+        productOverride: product,
+      });
+      detectedKeywords = detection.detected_keywords || [];
+      keywordData = detection.keyword_data || {};
+    } catch (kwError) {
+      // Non-fatal: keyword detection should not block message ingestion
+      console.error("⚠️ Per-message keyword detection error:", kwError.message);
+    }
+
+    // ============================================
+    // ✅ 5. Add message to a debounced batch
     //    - Uses product.waiting_time (default 5s)
     //    - Resets the timer if same sender sends again
     // ============================================
@@ -78,10 +101,16 @@ export async function POST(request, { params }) {
       sender_id,
       messageData: data,
       waiting_time: product.waiting_time || 5,
+      incoming_message: message,
+      detected_keywords: detectedKeywords,
+      keyword_data: keywordData,
     });
 
     console.log(
-      `💾 Message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}`,
+      `💾 Message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}` +
+        (detectedKeywords.length
+          ? ` | 🏷 keywords: ${detectedKeywords.join(", ")}`
+          : " | 🏷 no keywords detected"),
     );
 
     // ============================================
@@ -92,7 +121,7 @@ export async function POST(request, { params }) {
     // ============================================
 
     // ✅ Schedule faster processing (fire-and-forget)
-    scheduleBatchProcessing(batch.expires_at);
+    scheduleBatchProcessing(batch.expires_at, request.url);
 
     return NextResponse.json({
       success: true,
@@ -100,6 +129,8 @@ export async function POST(request, { params }) {
       message_id: savedMessage._id,
       batch_id: batch._id,
       mode: "prod",
+      detected_keywords: detectedKeywords,
+      keyword_data: keywordData,
       batch_will_send_at: batch.expires_at,
       product: {
         id: product._id,
@@ -121,7 +152,7 @@ export async function POST(request, { params }) {
  * both locally and on Vercel. If a new message resets the timer, the
  * processor will simply skip the batch (it won't be expired yet).
  */
-async function scheduleBatchProcessing(expiresAt) {
+async function scheduleBatchProcessing(expiresAt, requestUrl = "") {
   try {
     const now = Date.now();
     const delay = Math.max(0, new Date(expiresAt).getTime() - now) + 1000;
@@ -129,9 +160,22 @@ async function scheduleBatchProcessing(expiresAt) {
     // Wait for the debounce window to expire (+1s buffer)
     await new Promise((resolve) => setTimeout(resolve, delay));
 
-    const baseUrl =
+    // ✅ Priority: the ACTUAL host the webhook request came in on.
+    //    In production this is the real domain (e.g. https://yoursite.com),
+    //    never localhost. Falls back to Vercel URL, then NEXT_PUBLIC_APP_URL,
+    //    then localhost for local dev.
+    let baseUrl = "";
+    try {
+      const origin = new URL(requestUrl).origin;
+      if (origin) baseUrl = origin;
+    } catch {
+      // ignore malformed url
+    }
+
+    baseUrl =
+      baseUrl ||
+      (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
       process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.VERCEL_URL ||
       "http://localhost:3000";
 
     const url = `${baseUrl}/api/batches/process`;
