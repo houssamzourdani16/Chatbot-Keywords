@@ -30,7 +30,10 @@ export default function LoginPage() {
 
       if (data.success) {
         localStorage.setItem("accessToken", data.accessToken);
-        router.push("/dashboard");
+        // Redirect back to the page the user was trying to visit (if any)
+        const redirectTo = localStorage.getItem("redirectAfterLogin");
+        localStorage.removeItem("redirectAfterLogin");
+        router.push(redirectTo || "/dashboard");
       } else {
         setError(data.message || "Login failed");
       }
