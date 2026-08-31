@@ -16,6 +16,61 @@ import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.servi
 //    the timer, the processor skips the batch.
 // ============================================
 
+// ============================================
+// ✅ META / FACEBOOK WEBHOOK VERIFICATION (GET)
+//    Facebook sends a GET request with:
+//      ?hub.mode=subscribe
+//      &hub.verify_token=<META_VERIFY_TOKEN>
+//      &hub.challenge=<random>
+//    We must reply with the challenge as PLAIN TEXT
+//    (status 200) when the token matches — anything
+//    else (300+, JSON body) makes Facebook's
+//    verification fail with #N/A errors.
+// ============================================
+export async function GET(request) {
+  try {
+    const url = new URL(request.url);
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge");
+
+    console.log("🔍 Webhook verification request:", {
+      mode,
+      token,
+      challenge,
+    });
+
+    // Meta always uses mode === "subscribe" for verification
+    if (mode === "subscribe" && challenge) {
+      const verifyToken =
+        process.env.META_VERIFY_TOKEN || "your_verify_token_here";
+
+      if (token === verifyToken) {
+        console.log("✅ Verification successful!");
+        // MUST return the raw challenge as text/plain, no JSON wrapper
+        return new Response(challenge, {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
+
+      console.log("❌ Verification failed: Token mismatch");
+      return new Response("Verification failed - token mismatch", {
+        status: 403,
+      });
+    }
+
+    // Not a verification request → method not allowed / bad request
+    return new Response(
+      "Webhook is for Facebook/Meta verification. Use POST to send messages.",
+      { status: 200, headers: { "Content-Type": "text/plain" } },
+    );
+  } catch (error) {
+    console.error("❌ Webhook verification error:", error);
+    return new Response("Error", { status: 500 });
+  }
+}
+
 export async function POST(request, { params }) {
   try {
     await dbConnect();
@@ -29,8 +84,18 @@ export async function POST(request, { params }) {
     // ✅ Capture the FULL payload as raw_data (can hold anything)
     const data = await request.json();
 
-    // Extract the message text (support both `message` and `text` keys)
-    const message = data.message || data.text;
+    // ============================================
+    // ✅ Extract message text, supporting:
+    //    - Simple format: { message: "hello", sender_id: "x" }
+    //    - Meta/Facebook format:
+    //        entry[0].messaging[0].message.text
+    //        entry[0].messaging[0].sender.id
+    // ============================================
+    const metaEntry = data?.entry?.[0]?.messaging?.[0];
+    const metaMessage = metaEntry?.message?.text;
+
+    // Extract the message text (support both simple and Meta formats)
+    const message = metaMessage || data.message || data.text;
 
     if (!message) {
       return NextResponse.json(
@@ -59,8 +124,11 @@ export async function POST(request, { params }) {
 
     // ============================================
     // ✅ 3. Require a sender_id (needed for batching)
+    //    Supports both simple format (data.sender_id)
+    //    and Meta/Facebook format
+    //    (metaEntry.sender.id).
     // ============================================
-    const sender_id = data.sender_id;
+    const sender_id = metaEntry?.sender?.id || data.sender_id;
     if (!sender_id) {
       return NextResponse.json(
         { error: "sender_id is required for batching" },

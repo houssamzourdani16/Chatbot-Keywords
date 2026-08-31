@@ -4,6 +4,53 @@ import dbConnect from "@/lib/database/database";
 import Product from "@/lib/models/product";
 import Message from "@/lib/models/message";
 
+// ============================================
+// ✅ META / FACEBOOK WEBHOOK VERIFICATION (GET)
+//    Handles the GET hub.challenge verification
+//    sent by Facebook/Meta so the TEST webhook can
+//    be connected in the Meta developer dashboard.
+// ============================================
+export async function GET(request) {
+  try {
+    const url = new URL(request.url);
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge");
+
+    console.log("🔍 TEST webhook verification request:", {
+      mode,
+      token,
+      challenge,
+    });
+
+    if (mode === "subscribe" && challenge) {
+      const verifyToken =
+        process.env.META_VERIFY_TOKEN || "your_verify_token_here";
+
+      if (token === verifyToken) {
+        console.log("✅ TEST verification successful!");
+        return new Response(challenge, {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
+
+      console.log("❌ TEST verification failed: Token mismatch");
+      return new Response("Verification failed - token mismatch", {
+        status: 403,
+      });
+    }
+
+    return new Response(
+      "Test webhook is for Facebook/Meta verification. Use POST to send messages.",
+      { status: 200, headers: { "Content-Type": "text/plain" } },
+    );
+  } catch (error) {
+    console.error("❌ TEST webhook verification error:", error);
+    return new Response("Error", { status: 500 });
+  }
+}
+
 export async function POST(request, { params }) {
   try {
     await dbConnect();
