@@ -5,7 +5,7 @@ import Product from "@/lib/models/product";
 import User from "@/lib/models/user";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
-import { processBatch } from "@/lib/services/batch-processor";
+import { scheduleBatchProcessing } from "@/lib/services/batch-scheduler";
 
 // ✅ Allow the function to run up to 60s so the awaited batch processing
 //    (wait time + processing) completes before Vercel kills the function.
@@ -227,29 +227,5 @@ export async function POST(request, { params }) {
       { error: "Failed to process webhook" },
       { status: 500 },
     );
-  }
-}
-
-/**
- * Fire-and-forget: wait for the debounce window to expire, then process
- * the batch DIRECTLY (in-process) so the workflow continues reliably —
- * even on serverless where `setTimeout` + a separate HTTP call may not
- * fire. If a new message resets the timer, the processor will simply
- * skip the batch (it won't be expired yet).
- */
-async function scheduleBatchProcessing(expiresAt, batchId) {
-  try {
-    const now = Date.now();
-    const delay = Math.max(0, new Date(expiresAt).getTime() - now) + 1000;
-
-    // Wait for the debounce window to expire (+1s buffer)
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    // ✅ Process the batch directly (in-process). This is reliable and
-    //    doesn't depend on a separate HTTP call or the cron.
-    await processBatch(batchId);
-  } catch (error) {
-    // Non-fatal: the Vercel cron will retry. Log and continue.
-    console.error("⚠️ scheduleBatchProcessing failed:", error.message);
   }
 }
