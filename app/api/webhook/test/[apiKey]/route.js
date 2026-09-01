@@ -2,7 +2,10 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/database/database";
 import Product from "@/lib/models/product";
+import User from "@/lib/models/user";
 import Message from "@/lib/models/message";
+import { addMessageToBatch } from "@/lib/services/batch-service";
+import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 
 // ============================================
 // ✅ META / FACEBOOK WEBHOOK VERIFICATION (GET)
@@ -116,25 +119,68 @@ export async function POST(request, { params }) {
       );
     }
 
-    // ✅ Now save message (depends on product)
-    const newMessage = new Message({
-      user_id: product.user_id,
+    // ============================================
+    // ✅ Get the product owner
+    // ============================================
+    const owner = await User.findById(product.user_id);
+    if (!owner) {
+      return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+    }
+
+    // ============================================
+    // ✅ Detect keywords (same as production webhook)
+    // ============================================
+    let detectedKeywords = [];
+    let keywordData = {};
+    try {
+      const detection = await detectKeywordsForProduct({
+        productId: product._id,
+        message: data.message,
+        productOverride: product,
+      });
+      detectedKeywords = detection.detected_keywords || [];
+      keywordData = detection.keyword_data || {};
+    } catch (kwError) {
+      // Non-fatal
+      console.error("⚠️ Test keyword detection error:", kwError.message);
+    }
+
+    // ============================================
+    // ✅ Add message to a debounced batch (same as
+    //    production webhook) so it gets sent to n8n
+    //    after the product's waiting_time expires.
+    // ============================================
+    const sender_id = data.sender_id || "test_sender";
+    const { batch, message: savedMessage } = await addMessageToBatch({
+      user_id: owner._id,
       product_id: product._id,
-      raw_data: data,
-      mode: "test",
-      status: "received",
-      created_at: new Date(),
+      sender_id,
+      messageData: data,
+      waiting_time: product.waiting_time || 5,
+      incoming_message: data.message,
+      detected_keywords: detectedKeywords,
+      keyword_data: keywordData,
     });
 
-    await newMessage.save(); // ← Line 40 fixed!
+    // ✅ Mark the message as TEST mode (addMessageToBatch defaults to prod)
+    savedMessage.mode = "test";
+    await savedMessage.save();
 
-    console.log(`💾 Test message saved with ID: ${newMessage._id}`);
+    console.log(
+      `💾 Test message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}`,
+    );
+
+    // ✅ Schedule faster processing (fire-and-forget)
+    scheduleBatchProcessing(batch.expires_at, request.url);
 
     return NextResponse.json({
       success: true,
       message: "✅ Test webhook received successfully",
-      message_id: newMessage._id,
+      message_id: savedMessage._id,
+      batch_id: batch._id,
       mode: "test",
+      batch_will_send_at: batch.expires_at,
+      detected_keywords: detectedKeywords,
       product: {
         id: product._id,
         name: product.name,
@@ -146,5 +192,48 @@ export async function POST(request, { params }) {
       { error: "Failed to process test webhook" },
       { status: 500 },
     );
+  }
+}
+
+/**
+ * Fire-and-forget: schedule the batch processor to run shortly after
+ * the debounce window expires. Uses the internal base URL so it works
+ * both locally and on Vercel.
+ */
+async function scheduleBatchProcessing(expiresAt, requestUrl = "") {
+  try {
+    const now = Date.now();
+    const delay = Math.max(0, new Date(expiresAt).getTime() - now) + 1000;
+
+    // Wait for the debounce window to expire (+1s buffer)
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    let baseUrl = "";
+    try {
+      const origin = new URL(requestUrl).origin;
+      if (origin) baseUrl = origin;
+    } catch {
+      // ignore malformed url
+    }
+
+    baseUrl =
+      baseUrl ||
+      (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "http://localhost:3000";
+
+    const url = `${baseUrl}/api/batches/process`;
+
+    await fetch(url, {
+      method: "GET",
+      headers: {
+        ...(process.env.BATCH_PROCESS_SECRET
+          ? { Authorization: `Bearer ${process.env.BATCH_PROCESS_SECRET}` }
+          : {}),
+      },
+    });
+  } catch (error) {
+    // Non-fatal: the Vercel cron will retry. Log and continue.
+    console.error("⚠️ scheduleBatchProcessing failed:", error.message);
   }
 }
