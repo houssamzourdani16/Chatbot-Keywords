@@ -7,6 +7,12 @@ import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
 
+// ✅ Allow the function to run up to 60s so the awaited batch processing
+//    (wait time + processing) completes before Vercel kills the function.
+//    Without this, Vercel's default 10s limit would terminate the function
+//    mid-processing and the batch would never be sent.
+export const maxDuration = 60;
+
 // ============================================
 // ✅ FASTER PROCESSING
 //    After saving a message, we schedule the

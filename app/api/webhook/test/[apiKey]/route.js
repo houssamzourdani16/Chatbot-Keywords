@@ -8,6 +8,10 @@ import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
 
+// ✅ Allow the function to run up to 60s so the awaited batch processing
+//    (wait time + processing) completes before Vercel kills the function.
+export const maxDuration = 60;
+
 // ============================================
 // ✅ META / FACEBOOK WEBHOOK VERIFICATION (GET)
 //    Handles the GET hub.challenge verification
