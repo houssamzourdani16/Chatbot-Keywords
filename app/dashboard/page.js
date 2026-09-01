@@ -1,7 +1,7 @@
 // app/dashboard/page.js
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useProtectPage } from "@/lib/auth/auth";
 import {
@@ -48,7 +48,85 @@ export default function DashboardPage() {
   const [keywordLists, setKeywordLists] = useState([]);
   const [selectedKeywordList, setSelectedKeywordList] = useState("");
 
+  // Live message notifications
+  const [notifications, setNotifications] = useState([]);
+  const [dbConnected, setDbConnected] = useState(null); // null | true | false
+  const knownMessageIds = useRef(new Set());
+
   const getToken = () => localStorage.getItem("accessToken");
+
+  // Push a notification toast (auto-dismiss after 6s)
+  const pushNotification = useCallback((msg) => {
+    const id = `${msg.id}-${Date.now()}`;
+    setNotifications((prev) => [...prev.slice(-4), { ...msg, notifId: id }]);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.notifId !== id));
+    }, 6000);
+  }, []);
+
+  // Dismiss a single notification
+  const dismissNotification = useCallback((notifId) => {
+    setNotifications((prev) => prev.filter((n) => n.notifId !== notifId));
+  }, []);
+
+  // ============================================
+  // ✅ LIVE MESSAGE NOTIFICATIONS
+  //    Polls /api/messages every few seconds.
+  //    When a NEW message appears in the DB, it
+  //    pops up as a toast notification.
+  // ============================================
+  const pollMessages = useCallback(async () => {
+    try {
+      const res = await fetch("/api/messages?limit=10", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+
+      if (data.connected === false) {
+        setDbConnected(false);
+        return;
+      }
+      setDbConnected(true);
+
+      if (data.success && Array.isArray(data.messages)) {
+        // Track the newest message id we've seen
+        const prev = knownMessageIds.current;
+        const next = new Set(prev);
+        let newestId = null;
+        let newestTime = 0;
+
+        data.messages.forEach((m) => {
+          const t = new Date(m.created_at).getTime();
+          if (t > newestTime) {
+            newestTime = t;
+            newestId = m.id;
+          }
+          next.add(m.id);
+        });
+
+        // Only notify for messages newer than what we already know
+        if (newestId && !prev.has(newestId)) {
+          const newest = data.messages.find((m) => m.id === newestId);
+          if (newest) {
+            pushNotification(newest);
+          }
+        }
+
+        knownMessageIds.current = next;
+      }
+    } catch {
+      // Network error — don't spam, just mark disconnected
+      setDbConnected(false);
+    }
+  }, [pushNotification]);
+
+  // Start polling when the user is logged in
+  useEffect(() => {
+    if (!user) return;
+    pollMessages(); // immediate first check
+    const interval = setInterval(pollMessages, 5000);
+    return () => clearInterval(interval);
+  }, [user, pollMessages]);
 
   // Fetch available webhook models
   const fetchWebhooks = useCallback(async () => {
@@ -392,6 +470,87 @@ export default function DashboardPage() {
       </div>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        {/* ===== Live Message Notifications (toasts) ===== */}
+        <div className="pointer-events-none fixed right-4 top-20 z-60 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3">
+          {notifications.map((n) => (
+            <div
+              key={n.notifId}
+              className="pointer-events-auto animate-[slideIn_0.3s_ease-out] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10"
+            >
+              <div className="flex items-start gap-3 p-4">
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg ${
+                    n.status === "completed"
+                      ? "bg-emerald-100"
+                      : n.status === "failed"
+                        ? "bg-rose-100"
+                        : "bg-amber-100"
+                  }`}
+                >
+                  {n.status === "completed"
+                    ? "✅"
+                    : n.status === "failed"
+                      ? "❌"
+                      : "📩"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {n.product_name}
+                    </p>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                        n.status === "completed"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : n.status === "failed"
+                            ? "bg-rose-100 text-rose-700"
+                            : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {n.status}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 truncate text-sm text-slate-600">
+                    <span className="text-slate-400">{n.sender_id}:</span>{" "}
+                    {n.message}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {new Date(n.created_at).toLocaleTimeString()}
+                    {n.mode === "test" ? " · 🧪 Test" : " · 🚀 Prod"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => dismissNotification(n.notifId)}
+                  className="shrink-0 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                  aria-label="Dismiss"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ===== DB Connection Status ===== */}
+        {dbConnected !== null && (
+          <div
+            className={`mb-6 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm ${
+              dbConnected
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}
+          >
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                dbConnected ? "bg-emerald-500" : "bg-rose-500"
+              } ${dbConnected ? "animate-pulse" : ""}`}
+            />
+            {dbConnected
+              ? "🟢 Connected to database — listening for incoming messages"
+              : "🔴 Database connection lost — retrying..."}
+          </div>
+        )}
+
         {/* ===== Welcome Banner ===== */}
         <div className="mb-8 overflow-hidden rounded-2xl bg-linear-to-r from-indigo-600 via-purple-600 to-indigo-600 p-8 text-white shadow-xl shadow-indigo-600/20">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

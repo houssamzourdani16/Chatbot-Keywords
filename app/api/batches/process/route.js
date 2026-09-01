@@ -6,7 +6,7 @@ import {
   claimBatch,
   completeBatch,
   getBatchConversation,
-  deleteBatchMessages,
+  completeBatchMessages,
   failBatchMessages,
   failBatch,
 } from "@/lib/services/batch-service";
@@ -238,19 +238,19 @@ export async function GET(request) {
             };
           }
 
-          // ✅ Webhook succeeded → mark batch complete, then DELETE messages
+          // ✅ Webhook succeeded → mark batch complete, then mark messages
+          //    completed (KEEP them so the dashboard can show real stats).
           await completeBatch(batch._id);
-          const deletedIds = await deleteBatchMessages(batch._id);
+          await completeBatchMessages(batch._id);
 
           console.log(
-            `🗑️ Deleted ${deletedIds.length} messages for batch ${batch._id}`,
+            `✅ Marked ${conversation.length} messages completed for batch ${batch._id}`,
           );
 
           return {
             batch_id: batch._id,
             status: "completed",
             message_count: conversation.length,
-            deleted_message_ids: deletedIds,
           };
         } catch (error) {
           // Unexpected error → keep messages, mark them failed

@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/batches/process",
-      "schedule": "0 0 * * *"
+      "schedule": "*/1 * * * *"
     }
   ]
 }
