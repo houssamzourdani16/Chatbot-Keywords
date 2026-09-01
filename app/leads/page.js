@@ -36,30 +36,33 @@ export default function LeadsPage() {
 
   const getToken = () => localStorage.getItem("accessToken");
 
-  const fetchLeads = useCallback(async () => {
-    setLoadingLeads(true);
-    setError("");
-    try {
-      const params = new URLSearchParams({ page, limit: "20" });
-      if (productFilter) params.set("product_id", productFilter);
-      if (statusFilter) params.set("status", statusFilter);
+  const fetchLeads = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!silent) setLoadingLeads(true);
+      setError("");
+      try {
+        const params = new URLSearchParams({ page, limit: "20" });
+        if (productFilter) params.set("product_id", productFilter);
+        if (statusFilter) params.set("status", statusFilter);
 
-      const res = await fetch(`/api/leads?${params}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setLeads(data.leads);
-        setTotalPages(data.totalPages || 1);
-      } else {
-        setError(data.error || "Failed to load leads");
+        const res = await fetch(`/api/leads?${params}`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        });
+        const data = await res.json();
+        if (data.success) {
+          setLeads(data.leads);
+          setTotalPages(data.totalPages || 1);
+        } else {
+          setError(data.error || "Failed to load leads");
+        }
+      } catch (err) {
+        setError("Failed to load leads");
+      } finally {
+        if (!silent) setLoadingLeads(false);
       }
-    } catch (err) {
-      setError("Failed to load leads");
-    } finally {
-      setLoadingLeads(false);
-    }
-  }, [page, productFilter, statusFilter]);
+    },
+    [page, productFilter, statusFilter],
+  );
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -79,6 +82,17 @@ export default function LeadsPage() {
       fetchProducts();
     }
   }, [user, fetchLeads, fetchProducts]);
+
+  // ✅ Smooth auto-refresh: poll for new leads every 5 seconds in the
+  //    background (silent) so the page updates without a visible reload
+  //    or loading spinner.
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      fetchLeads({ silent: true });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [user, fetchLeads]);
 
   useEffect(() => {
     const timer = setTimeout(() => setPage(1), 300);

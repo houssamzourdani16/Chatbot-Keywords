@@ -6,6 +6,7 @@ import User from "@/lib/models/user";
 import Message from "@/lib/models/message";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
+import { processBatch } from "@/lib/services/batch-processor";
 
 // ============================================
 // ✅ META / FACEBOOK WEBHOOK VERIFICATION (GET)
@@ -170,8 +171,14 @@ export async function POST(request, { params }) {
       `💾 Test message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}`,
     );
 
-    // ✅ Schedule faster processing (fire-and-forget)
-    scheduleBatchProcessing(batch.expires_at, request.url);
+    // ✅ AWAIT the batch processing. We wait for the product's wait time
+    //    to expire, then process the batch DIRECTLY in this function.
+    //    This keeps the function alive until the batch is processed —
+    //    reliable on BOTH local and serverless (Vercel), where a
+    //    fire-and-forget setTimeout would be frozen after the response.
+    //    processBatch re-reads expires_at from the DB and skips if a
+    //    newer message reset the timer (debounce still works).
+    await scheduleBatchProcessing(batch.expires_at, batch._id);
 
     return NextResponse.json({
       success: true,
@@ -196,11 +203,13 @@ export async function POST(request, { params }) {
 }
 
 /**
- * Fire-and-forget: schedule the batch processor to run shortly after
- * the debounce window expires. Uses the internal base URL so it works
- * both locally and on Vercel.
+ * Fire-and-forget: wait for the debounce window to expire, then process
+ * the batch DIRECTLY (in-process) so the workflow continues reliably —
+ * even on serverless where `setTimeout` + a separate HTTP call may not
+ * fire. If a new message resets the timer, the processor will simply
+ * skip the batch (it won't be expired yet).
  */
-async function scheduleBatchProcessing(expiresAt, requestUrl = "") {
+async function scheduleBatchProcessing(expiresAt, batchId) {
   try {
     const now = Date.now();
     const delay = Math.max(0, new Date(expiresAt).getTime() - now) + 1000;
@@ -208,30 +217,9 @@ async function scheduleBatchProcessing(expiresAt, requestUrl = "") {
     // Wait for the debounce window to expire (+1s buffer)
     await new Promise((resolve) => setTimeout(resolve, delay));
 
-    let baseUrl = "";
-    try {
-      const origin = new URL(requestUrl).origin;
-      if (origin) baseUrl = origin;
-    } catch {
-      // ignore malformed url
-    }
-
-    baseUrl =
-      baseUrl ||
-      (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "http://localhost:3000";
-
-    const url = `${baseUrl}/api/batches/process`;
-
-    await fetch(url, {
-      method: "GET",
-      headers: {
-        ...(process.env.BATCH_PROCESS_SECRET
-          ? { Authorization: `Bearer ${process.env.BATCH_PROCESS_SECRET}` }
-          : {}),
-      },
-    });
+    // ✅ Process the batch directly (in-process). This is reliable and
+    //    doesn't depend on a separate HTTP call or the cron.
+    await processBatch(batchId);
   } catch (error) {
     // Non-fatal: the Vercel cron will retry. Log and continue.
     console.error("⚠️ scheduleBatchProcessing failed:", error.message);

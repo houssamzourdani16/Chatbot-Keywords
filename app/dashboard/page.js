@@ -397,6 +397,12 @@ export default function DashboardPage() {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "📊" },
     { id: "products", label: "Products", icon: "📦" },
+    {
+      id: "messages",
+      label: "Messages",
+      icon: "💬",
+      href: "/dashboard/messages",
+    },
   ];
 
   return (
@@ -1116,9 +1122,14 @@ export default function DashboardPage() {
                       {/* Card header */}
                       <div className="flex items-start justify-between border-b border-slate-100 bg-linear-to-r from-slate-50 to-white px-6 py-4">
                         <div>
-                          <h3 className="text-lg font-bold text-slate-900">
-                            {product.name}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-slate-900">
+                              {product.name}
+                            </h3>
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                              ⏱️ {product.waiting_time || 5}s
+                            </span>
+                          </div>
                           <p className="mt-0.5 text-sm text-slate-500">
                             {product.description || "No description"}
                           </p>

@@ -5,6 +5,7 @@ import Product from "@/lib/models/product";
 import User from "@/lib/models/user";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
+import { processBatch } from "@/lib/services/batch-processor";
 
 // ============================================
 // ✅ FASTER PROCESSING
@@ -186,14 +187,19 @@ export async function POST(request, { params }) {
     );
 
     // ============================================
-    // ✅ 5. Return immediately — just save the message.
-    //    No waiting, no processing here. The messages
-    //    are stored in the database and will be
-    //    processed later (by the scheduler / cron).
+    // ✅ 5. AWAIT the batch processing. We wait for the product's
+    //    wait time to expire, then process the batch DIRECTLY in this
+    //    function. This keeps the function alive until the batch is
+    //    processed — reliable on BOTH local and serverless (Vercel),
+    //    where a fire-and-forget setTimeout would be frozen after the
+    //    response is returned.
+    //
+    //    The debounce still works correctly: processBatch re-reads the
+    //    batch's expires_at from the DB and SKIPS it if a newer message
+    //    from the same sender reset the timer. The cron
+    //    (`/api/batches/process` every minute) remains as a safety net.
     // ============================================
-
-    // ✅ Schedule faster processing (fire-and-forget)
-    scheduleBatchProcessing(batch.expires_at, request.url);
+    await scheduleBatchProcessing(batch.expires_at, batch._id);
 
     return NextResponse.json({
       success: true,
@@ -219,12 +225,13 @@ export async function POST(request, { params }) {
 }
 
 /**
- * Fire-and-forget: schedule the batch processor to run shortly after
- * the debounce window expires. Uses the internal base URL so it works
- * both locally and on Vercel. If a new message resets the timer, the
- * processor will simply skip the batch (it won't be expired yet).
+ * Fire-and-forget: wait for the debounce window to expire, then process
+ * the batch DIRECTLY (in-process) so the workflow continues reliably —
+ * even on serverless where `setTimeout` + a separate HTTP call may not
+ * fire. If a new message resets the timer, the processor will simply
+ * skip the batch (it won't be expired yet).
  */
-async function scheduleBatchProcessing(expiresAt, requestUrl = "") {
+async function scheduleBatchProcessing(expiresAt, batchId) {
   try {
     const now = Date.now();
     const delay = Math.max(0, new Date(expiresAt).getTime() - now) + 1000;
@@ -232,35 +239,9 @@ async function scheduleBatchProcessing(expiresAt, requestUrl = "") {
     // Wait for the debounce window to expire (+1s buffer)
     await new Promise((resolve) => setTimeout(resolve, delay));
 
-    // ✅ Priority: the ACTUAL host the webhook request came in on.
-    //    In production this is the real domain (e.g. https://yoursite.com),
-    //    never localhost. Falls back to Vercel URL, then NEXT_PUBLIC_APP_URL,
-    //    then localhost for local dev.
-    let baseUrl = "";
-    try {
-      const origin = new URL(requestUrl).origin;
-      if (origin) baseUrl = origin;
-    } catch {
-      // ignore malformed url
-    }
-
-    baseUrl =
-      baseUrl ||
-      (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "http://localhost:3000";
-
-    const url = `${baseUrl}/api/batches/process`;
-
-    await fetch(url, {
-      method: "GET",
-      headers: {
-        // Pass the secret if configured, so the processor accepts the call
-        ...(process.env.BATCH_PROCESS_SECRET
-          ? { Authorization: `Bearer ${process.env.BATCH_PROCESS_SECRET}` }
-          : {}),
-      },
-    });
+    // ✅ Process the batch directly (in-process). This is reliable and
+    //    doesn't depend on a separate HTTP call or the cron.
+    await processBatch(batchId);
   } catch (error) {
     // Non-fatal: the Vercel cron will retry. Log and continue.
     console.error("⚠️ scheduleBatchProcessing failed:", error.message);
