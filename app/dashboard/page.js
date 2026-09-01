@@ -478,45 +478,12 @@ export default function DashboardPage() {
               className="pointer-events-auto animate-[slideIn_0.3s_ease-out] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10"
             >
               <div className="flex items-start gap-3 p-4">
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg ${
-                    n.status === "completed"
-                      ? "bg-emerald-100"
-                      : n.status === "failed"
-                        ? "bg-rose-100"
-                        : "bg-amber-100"
-                  }`}
-                >
-                  {n.status === "completed"
-                    ? "✅"
-                    : n.status === "failed"
-                      ? "❌"
-                      : "📩"}
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-lg">
+                  💬
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-bold text-slate-900">
-                      {n.product_name}
-                    </p>
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                        n.status === "completed"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : n.status === "failed"
-                            ? "bg-rose-100 text-rose-700"
-                            : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {n.status}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 truncate text-sm text-slate-600">
-                    <span className="text-slate-400">{n.sender_id}:</span>{" "}
+                  <p className="text-sm leading-relaxed text-slate-800">
                     {n.message}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {new Date(n.created_at).toLocaleTimeString()}
-                    {n.mode === "test" ? " · 🧪 Test" : " · 🚀 Prod"}
                   </p>
                 </div>
                 <button
