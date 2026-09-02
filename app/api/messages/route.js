@@ -226,3 +226,49 @@ export async function GET(request) {
     );
   }
 }
+
+// DELETE - Remove one or more messages (e.g. failed messages) for the
+// logged-in user. Accepts a single message id or an array of ids.
+export async function DELETE(request) {
+  try {
+    await dbConnect();
+
+    const token = request.headers.get("authorization")?.split(" ")[1];
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const body = await request.json().catch(() => ({}));
+    const ids = Array.isArray(body.ids)
+      ? body.ids
+      : body.id
+        ? [body.id]
+        : [];
+
+    if (ids.length === 0) {
+      return NextResponse.json(
+        { error: "No message ids provided" },
+        { status: 400 },
+      );
+    }
+
+    // Only delete messages that belong to this user.
+    const result = await Message.deleteMany({
+      _id: { $in: ids },
+      user_id: decoded.userId,
+    });
+
+    return NextResponse.json({
+      success: true,
+      deleted: result.deletedCount || 0,
+    });
+  } catch (error) {
+    console.error("Error deleting messages:", error);
+    return NextResponse.json(
+      { error: "Failed to delete messages" },
+      { status: 500 },
+    );
+  }
+}

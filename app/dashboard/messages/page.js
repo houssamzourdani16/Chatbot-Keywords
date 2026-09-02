@@ -80,6 +80,29 @@ export default function MessagesPage() {
   // Detail modal
   const [selectedMessage, setSelectedMessage] = useState(null);
 
+  // ✅ Delete a single message (e.g. a failed one)
+  const deleteMessage = async (id) => {
+    if (!window.confirm("Delete this message?")) return;
+    try {
+      const res = await fetch(`/api/messages`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+      } else {
+        setError(data.error || "Failed to delete message");
+      }
+    } catch (err) {
+      setError("Failed to delete message");
+    }
+  };
+
   // ✅ Live countdown state: updates every second so we can show how much
   //    time is left before a received message's batch is processed.
   const [now, setNow] = useState(0);
@@ -445,12 +468,22 @@ export default function MessagesPage() {
                   <p className="text-xs text-gray-400">
                     {new Date(msg.created_at).toLocaleString()}
                   </p>
-                  <button
-                    onClick={() => setSelectedMessage(msg)}
-                    className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                  >
-                    View Details
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {msg.status === "failed" && (
+                      <button
+                        onClick={() => deleteMessage(msg.id)}
+                        className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"
+                      >
+                        🗑️ Remove
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedMessage(msg)}
+                      className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                    >
+                      View Details
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
