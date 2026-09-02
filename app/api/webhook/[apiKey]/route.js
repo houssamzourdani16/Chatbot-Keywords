@@ -179,7 +179,7 @@ export async function POST(request, { params }) {
       product_id: product._id,
       sender_id,
       messageData: data,
-      waiting_time: product.waiting_time || 5,
+      waiting_time: product.waiting_time || 7,
       incoming_message: message,
       detected_keywords: detectedKeywords,
       keyword_data: keywordData,

@@ -92,7 +92,7 @@ export async function GET(request, { params }) {
           completedCount,
           failedCount,
           successRate,
-          avgResponseTime: product.waiting_time || 5,
+          avgResponseTime: product.waiting_time || 7,
         },
       },
       messages: enrichedMessages,

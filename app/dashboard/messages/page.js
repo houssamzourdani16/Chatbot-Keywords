@@ -17,6 +17,50 @@ const MODE_COLORS = {
   prod: "bg-indigo-100 text-indigo-700",
 };
 
+// Compute the seconds remaining until a batch's debounce timer expires.
+// Returns -1 if the timer has already passed.
+function secondsUntil(expiresAt, now) {
+  if (!expiresAt) return null;
+  const diff = new Date(expiresAt).getTime() - now;
+  return Math.ceil(diff / 1000);
+}
+
+// ⏳ Live countdown badge for a received message. Ticks down every second
+//    (e.g. 5 → 4 → 3 → 2 → 1) until the batch timer expires.
+function LiveCountdownBadge({ expiresAt, waitingTime, now }) {
+  const secs = secondsUntil(expiresAt, now);
+
+  // No batch expiry info — show the static wait time as a fallback.
+  if (secs === null) {
+    return (
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+        ⏱️ {waitingTime}s
+      </span>
+    );
+  }
+
+  // Timer expired but the batch is still received (nothing picked it up yet).
+  if (secs <= 0) {
+    return (
+      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+        ⏱️ 0s → processing
+      </span>
+    );
+  }
+
+  // Active countdown; red when running out of time.
+  const urgent = secs <= 3;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
+        urgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+      }`}
+    >
+      <span className="inline-block animate-pulse">⏳</span> {secs}s
+    </span>
+  );
+}
+
 export default function MessagesPage() {
   const { user, loading } = useProtectPage();
   const router = useRouter();
@@ -35,6 +79,10 @@ export default function MessagesPage() {
 
   // Detail modal
   const [selectedMessage, setSelectedMessage] = useState(null);
+
+  // ✅ Live countdown state: updates every second so we can show how much
+  //    time is left before a received message's batch is processed.
+  const [now, setNow] = useState(0);
 
   const getToken = () => localStorage.getItem("accessToken");
 
@@ -96,6 +144,45 @@ export default function MessagesPage() {
     }, 5000);
     return () => clearInterval(interval);
   }, [user, fetchMessages]);
+
+  // ✅ Tick `now` every second to drive the live countdown on message cards.
+  useEffect(() => {
+    setNow(Date.now()); // set immediately on mount
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // ✅ AUTO-PROCESS when the countdown hits 0.
+  //    When any received message's batch timer expires (0s), we call the
+  //    `/api/batches/process` endpoint which runs `processBatch` and sends
+  //    the joined conversation to the n8n webhook. This makes the messages
+  //    actually get processed the moment the countdown reaches zero.
+  useEffect(() => {
+    if (!user) return;
+    const expired = messages.filter(
+      (m) =>
+        m.status === "received" &&
+        m.batch_expires_at &&
+        secondsUntil(m.batch_expires_at, now) <= 0,
+    );
+    if (expired.length === 0) return;
+
+    // Guard: only fire once per second at most.
+    const token = getToken();
+    if (!token) return;
+
+    fetch("/api/batches/process", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then(() => {
+        // Refresh the list so the statuses update to processing/completed.
+        fetchMessages({ silent: true });
+      })
+      .catch(() => {
+        // non-fatal
+      });
+  }, [now, messages, user, fetchMessages]);
 
   useEffect(() => {
     const timer = setTimeout(() => setPage(1), 300);
@@ -213,9 +300,17 @@ export default function MessagesPage() {
                       <p className="text-sm font-semibold text-gray-900">
                         {msg.product_name}
                       </p>
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                        ⏱️ {msg.waiting_time || 5}s
-                      </span>
+                      {msg.status === "received" ? (
+                        <LiveCountdownBadge
+                          expiresAt={msg.batch_expires_at}
+                          waitingTime={msg.waiting_time || 7}
+                          now={now}
+                        />
+                      ) : (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                          ⏱️ {msg.waiting_time || 7}s
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-500">
                       Sender: {msg.sender_id}
@@ -244,30 +339,111 @@ export default function MessagesPage() {
                   {msg.message}
                 </p>
 
-                {/* Keywords found on the spreadsheet */}
+                {/* Original / complete message */}
+                {msg.raw_data && (
+                  <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3">
+                    <p className="mb-1.5 text-xs font-medium text-gray-500">
+                      📨 Original message (full payload)
+                    </p>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md bg-gray-50 p-2 text-xs text-gray-700">
+                      {JSON.stringify(msg.raw_data, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Full outgoing payload sent to n8n */}
+                {msg.sent_payload && (
+                  <div className="mb-3 rounded-lg border border-emerald-200 bg-white p-3">
+                    <p className="mb-1.5 text-xs font-medium text-emerald-600">
+                      📤 Sent to n8n (full payload)
+                    </p>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md bg-gray-50 p-2 text-xs text-gray-700">
+                      {JSON.stringify(msg.sent_payload, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Keywords found on the spreadsheet — each keyword grouped
+                    with its full spreadsheet row */}
                 <div className="mb-3">
                   <p className="mb-1.5 text-xs font-medium text-gray-500">
                     🏷️ Keywords found on spreadsheet
                   </p>
                   {msg.detected_keywords && msg.detected_keywords.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="space-y-2">
                       {msg.detected_keywords.map((kw) => {
                         const data = msg.keyword_data?.[kw];
+                        const row = data?.row;
+                        const headers = data?.headers;
+                        const cells = Array.isArray(row)
+                          ? row
+                              .map((cell, idx) => ({
+                                label:
+                                  (headers && headers[idx]) ||
+                                  `Column ${idx + 1}`,
+                                value:
+                                  typeof cell === "string" && cell.trim()
+                                    ? cell
+                                    : cell,
+                              }))
+                              .filter(
+                                (c) =>
+                                  c.value !== "" &&
+                                  c.value !== null &&
+                                  c.value !== undefined,
+                              )
+                          : [];
                         return (
-                          <span
+                          <div
                             key={kw}
-                            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700"
-                            title={
-                              data?.meaning ? `Meaning: ${data.meaning}` : kw
-                            }
+                            className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-2.5"
                           >
-                            {kw}
-                            {data?.category && (
-                              <span className="text-indigo-400">
-                                · {data.category}
+                            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+                                {kw}
                               </span>
+                              {data?.category && (
+                                <span className="text-xs text-indigo-500">
+                                  {data.category}
+                                </span>
+                              )}
+                              {data?.meaning && (
+                                <span className="text-xs text-gray-500">
+                                  {data.meaning}
+                                </span>
+                              )}
+                            </div>
+                            {cells.length > 0 && (
+                              <div className="overflow-x-auto rounded-md border border-indigo-100 bg-white">
+                                <table className="w-full text-left text-[11px]">
+                                  <thead>
+                                    <tr className="border-b border-indigo-100 bg-indigo-50/60">
+                                      {cells.map((c, idx) => (
+                                        <th
+                                          key={idx}
+                                          className="whitespace-nowrap px-2 py-1 font-semibold text-indigo-600"
+                                        >
+                                          {c.label}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr>
+                                      {cells.map((c, idx) => (
+                                        <td
+                                          key={idx}
+                                          className="whitespace-nowrap px-2 py-1 text-gray-700"
+                                        >
+                                          {c.value}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
                             )}
-                          </span>
+                          </div>
                         );
                       })}
                     </div>
@@ -371,6 +547,30 @@ export default function MessagesPage() {
                   {selectedMessage.message}
                 </p>
               </div>
+
+              {/* Original / complete message */}
+              {selectedMessage.raw_data && (
+                <div className="mb-4">
+                  <p className="mb-1.5 text-sm font-medium text-gray-700">
+                    📨 Original message (full payload)
+                  </p>
+                  <pre className="max-h-60 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-gray-50 p-3 text-xs text-gray-700">
+                    {JSON.stringify(selectedMessage.raw_data, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Full outgoing payload sent to n8n */}
+              {selectedMessage.sent_payload && (
+                <div className="mb-4">
+                  <p className="mb-1.5 text-sm font-medium text-emerald-700">
+                    📤 Sent to n8n (full payload)
+                  </p>
+                  <pre className="max-h-60 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-gray-50 p-3 text-xs text-gray-700">
+                    {JSON.stringify(selectedMessage.sent_payload, null, 2)}
+                  </pre>
+                </div>
+              )}
 
               <div className="mb-4">
                 <p className="mb-1.5 text-sm font-medium text-gray-700">

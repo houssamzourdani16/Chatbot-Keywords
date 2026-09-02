@@ -282,7 +282,7 @@ export default function ProductDetailPage() {
             <div className="rounded-xl bg-slate-50 p-4">
               <p className="text-xs text-slate-500">⏰ Waiting Time</p>
               <p className="mt-1 text-xl font-bold text-slate-900">
-                {product.waiting_time || 5}s
+                {product.waiting_time || 7}s
               </p>
             </div>
             <div className="rounded-xl bg-slate-50 p-4">
@@ -491,7 +491,7 @@ export default function ProductDetailPage() {
                 <input
                   type="number"
                   name="waiting_time"
-                  defaultValue={product.waiting_time || 5}
+                  defaultValue={product.waiting_time || 7}
                   min="1"
                   max="30"
                   className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"

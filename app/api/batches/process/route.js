@@ -1,7 +1,10 @@
 // app/api/batches/process/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/database/database";
-import { getExpiredBatches } from "@/lib/services/batch-service";
+import {
+  getExpiredBatches,
+  recoverStuckProcessingBatches,
+} from "@/lib/services/batch-service";
 import { processBatch } from "@/lib/services/batch-processor";
 
 /**
@@ -38,6 +41,11 @@ export async function GET(request) {
 
     await dbConnect();
 
+    // ✅ Self-heal: reset any batch stuck in "processing" (e.g. a serverless
+    //    function died mid-processing) back to "open" so it gets retried.
+    //    This prevents the "never processes" state you saw.
+    const recovered = await recoverStuckProcessingBatches();
+
     // 1. Find expired, open batches
     const expiredBatches = await getExpiredBatches(20);
 
@@ -45,6 +53,7 @@ export async function GET(request) {
       return NextResponse.json({
         success: true,
         processed: 0,
+        recovered: recovered.length,
         message: "No batches ready to process",
       });
     }
@@ -61,6 +70,7 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       processed: filteredResults.length,
+      recovered: recovered.length,
       results: filteredResults,
     });
   } catch (error) {

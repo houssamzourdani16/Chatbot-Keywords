@@ -168,7 +168,7 @@ export async function POST(request) {
       api_key: apiKey,
       webhook_url: webhook_url || undefined,
       webhook_url_test: webhook_url_test || undefined,
-      waiting_time: parseInt(waiting_time) || 5,
+      waiting_time: parseInt(waiting_time) || 7,
       mode: "test", // ✅ Default to TEST mode
       category: category || "",
       subcategory: subcategory || "",

@@ -24,7 +24,7 @@ export default function NewProductPage() {
       price: parseFloat(formData.get("price")),
       quantity: parseInt(formData.get("quantity")),
       description: formData.get("description"),
-      waiting_time: parseInt(formData.get("waiting_time")) || 5,
+      waiting_time: parseInt(formData.get("waiting_time")) || 7,
       status: formData.get("status"),
     };
 

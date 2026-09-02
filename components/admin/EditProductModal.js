@@ -12,7 +12,7 @@ export default function EditProductModal({ product, onClose, onSave, saving }) {
       price: parseFloat(formData.get("price")),
       quantity: parseInt(formData.get("quantity")),
       description: formData.get("description"),
-      waiting_time: parseInt(formData.get("waiting_time")) || 5,
+      waiting_time: parseInt(formData.get("waiting_time")) || 7,
       status: formData.get("status"),
     };
     onSave(data);
@@ -70,7 +70,7 @@ export default function EditProductModal({ product, onClose, onSave, saving }) {
             <input
               type="number"
               name="waiting_time"
-              defaultValue={product.waiting_time || 5}
+              defaultValue={product.waiting_time || 7}
               min="1"
               max="30"
               className="rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"

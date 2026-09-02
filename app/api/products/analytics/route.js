@@ -99,7 +99,7 @@ export async function GET(request) {
     // We estimate based on product waiting_time
     const avgResponseTime = products.length
       ? (
-          products.reduce((sum, p) => sum + (p.waiting_time || 5), 0) /
+          products.reduce((sum, p) => sum + (p.waiting_time || 7), 0) /
           products.length
         ).toFixed(1)
       : "0";

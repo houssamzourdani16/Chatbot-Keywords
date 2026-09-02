@@ -10,6 +10,54 @@ import {
   deleteProduct,
 } from "@/lib/actions/product-actions";
 
+const STATUS_COLORS = {
+  received: "bg-blue-100 text-blue-700",
+  processing: "bg-yellow-100 text-yellow-700",
+  completed: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+};
+
+const MODE_COLORS = {
+  test: "bg-purple-100 text-purple-700",
+  prod: "bg-indigo-100 text-indigo-700",
+};
+
+// Compute the seconds remaining until a batch's debounce timer expires.
+function secondsUntil(expiresAt, now) {
+  if (!expiresAt) return null;
+  const diff = new Date(expiresAt).getTime() - now;
+  return Math.ceil(diff / 1000);
+}
+
+// ⏳ Live countdown badge (same as the messages page).
+function LiveCountdownBadge({ expiresAt, waitingTime, now }) {
+  const secs = secondsUntil(expiresAt, now);
+  if (secs === null) {
+    return (
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+        ⏱️ {waitingTime}s
+      </span>
+    );
+  }
+  if (secs <= 0) {
+    return (
+      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+        ⏱️ 0s → processing
+      </span>
+    );
+  }
+  const urgent = secs <= 3;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
+        urgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+      }`}
+    >
+      <span className="inline-block animate-pulse">⏳</span> {secs}s
+    </span>
+  );
+}
+
 export default function DashboardPage() {
   const { user, loading } = useProtectPage();
   const router = useRouter();
@@ -53,6 +101,10 @@ export default function DashboardPage() {
   const [dbConnected, setDbConnected] = useState(null); // null | true | false
   const [notifPanelOpen, setNotifPanelOpen] = useState(true);
   const knownMessageIds = useRef(new Set());
+
+  // ✅ Live countdown state: ticks every second so notification cards can
+  //    show the same countdown as the messages page.
+  const [now, setNow] = useState(0);
 
   const getToken = () => localStorage.getItem("accessToken");
 
@@ -128,6 +180,13 @@ export default function DashboardPage() {
     const interval = setInterval(pollMessages, 5000);
     return () => clearInterval(interval);
   }, [user, pollMessages]);
+
+  // ✅ Tick `now` every second to drive the live countdown on notifications.
+  useEffect(() => {
+    setNow(Date.now()); // set immediately on mount
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Fetch available webhook models
   const fetchWebhooks = useCallback(async () => {
@@ -537,10 +596,70 @@ export default function DashboardPage() {
                         💬
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm leading-relaxed text-slate-800">
+                        {/* Product name + countdown (same as messages page) */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="text-xs font-semibold text-slate-900">
+                            {n.product_name || "Message"}
+                          </p>
+                          {n.status === "received" ? (
+                            <LiveCountdownBadge
+                              expiresAt={n.batch_expires_at}
+                              waitingTime={n.waiting_time || 7}
+                              now={now}
+                            />
+                          ) : (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                              ⏱️ {n.waiting_time || 7}s
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Sender */}
+                        {n.sender_id && (
+                          <p className="mt-0.5 text-[11px] text-slate-400">
+                            Sender: {n.sender_id}
+                          </p>
+                        )}
+
+                        {/* Mode + status badges */}
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              MODE_COLORS[n.mode] || MODE_COLORS.prod
+                            }`}
+                          >
+                            {n.mode}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              STATUS_COLORS[n.status] || STATUS_COLORS.received
+                            }`}
+                          >
+                            {n.status}
+                          </span>
+                        </div>
+
+                        {/* Message text */}
+                        <p className="mt-1.5 rounded-md bg-slate-50 p-2 text-xs leading-relaxed text-slate-800">
                           {n.message}
                         </p>
-                        <p className="mt-1 text-[11px] text-slate-400">
+
+                        {/* Keywords found on the spreadsheet */}
+                        {n.detected_keywords &&
+                          n.detected_keywords.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {n.detected_keywords.map((kw) => (
+                                <span
+                                  key={kw}
+                                  className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
+                                >
+                                  {kw}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                        <p className="mt-1 text-[10px] text-slate-400">
                           {new Date(n.created_at).toLocaleTimeString()}
                         </p>
                       </div>
@@ -1127,7 +1246,7 @@ export default function DashboardPage() {
                               {product.name}
                             </h3>
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                              ⏱️ {product.waiting_time || 5}s
+                              ⏱️ {product.waiting_time || 7}s
                             </span>
                           </div>
                           <p className="mt-0.5 text-sm text-slate-500">
@@ -1212,7 +1331,7 @@ export default function DashboardPage() {
                           <div>
                             <p className="text-xs text-slate-500">Wait Time</p>
                             <p className="text-xl font-bold text-slate-900">
-                              {product.waiting_time || 5}s
+                              {product.waiting_time || 7}s
                             </p>
                           </div>
                         </div>
@@ -1434,7 +1553,7 @@ export default function DashboardPage() {
                 <input
                   type="number"
                   name="waiting_time"
-                  defaultValue={editingProduct.waiting_time || 5}
+                  defaultValue={editingProduct.waiting_time || 7}
                   min="1"
                   max="30"
                   className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"

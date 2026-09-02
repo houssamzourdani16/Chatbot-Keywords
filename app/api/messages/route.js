@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/database/database";
 import Product from "@/lib/models/product";
 import Message from "@/lib/models/message";
+import Batch from "@/lib/models/batch";
 import jwt from "jsonwebtoken";
 import { getKeywordsForList } from "@/lib/services/keyword-list-service";
 import { detectKeywordsInText } from "@/lib/services/keyword-detection.service";
@@ -37,7 +38,7 @@ export async function GET(request) {
     const productWaitMap = {};
     products.forEach((p) => {
       productMap[p._id.toString()] = p.name;
-      productWaitMap[p._id.toString()] = p.waiting_time || 5;
+      productWaitMap[p._id.toString()] = p.waiting_time || 7;
     });
 
     // Build the message query
@@ -58,6 +59,28 @@ export async function GET(request) {
         .lean(),
       Message.countDocuments(messageQuery),
     ]);
+
+    // ✅ Build a lookup of batch -> expires_at + sent_payload so the UI can
+    //    show a live countdown (for received messages) and the full outgoing
+    //    payload that was sent to n8n (for completed messages).
+    const batchInfoMap = {};
+    const batchIds = messages.map((m) => m.batch_id).filter(Boolean);
+    if (batchIds.length > 0) {
+      try {
+        const batches = await Batch.find({ _id: { $in: batchIds } })
+          .select("_id expires_at status sent_payload")
+          .lean();
+        batches.forEach((b) => {
+          batchInfoMap[b._id.toString()] = {
+            expires_at: b.expires_at,
+            status: b.status,
+            sent_payload: b.sent_payload || null,
+          };
+        });
+      } catch (e) {
+        // Non-fatal: countdown just won't show if batch lookup fails
+      }
+    }
 
     // ✅ Build a lookup of the FULL spreadsheet rows for each product's
     //    keyword list, so we can enrich every message's keyword_data with
@@ -120,6 +143,9 @@ export async function GET(request) {
       const productKey = m.product_id?.toString();
       const rowsMap = keywordRowsByProduct[productKey] || {};
       const listKeywords = keywordListByProduct[productKey] || [];
+      const batchInfo = m.batch_id
+        ? batchInfoMap[m.batch_id.toString()] || null
+        : null;
 
       // ✅ Determine the message text
       const messageText =
@@ -162,11 +188,16 @@ export async function GET(request) {
 
       return {
         id: m._id,
+        batch_id: m.batch_id || null,
+        batch_expires_at: batchInfo?.expires_at || null,
+        batch_status: batchInfo?.status || null,
+        sent_payload: batchInfo?.sent_payload || null,
         product_id: m.product_id,
         product_name: productMap[productKey] || "Unknown",
-        waiting_time: productWaitMap[productKey] || 5,
+        waiting_time: productWaitMap[productKey] || 7,
         sender_id: m.sender_id,
         message: messageText,
+        raw_data: m.raw_data || null,
         platform: m.raw_data?.platform || null,
         status: m.status,
         mode: m.mode,
