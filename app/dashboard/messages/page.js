@@ -339,18 +339,6 @@ export default function MessagesPage() {
                   {msg.message}
                 </p>
 
-                {/* Original / complete message */}
-                {msg.raw_data && (
-                  <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3">
-                    <p className="mb-1.5 text-xs font-medium text-gray-500">
-                      📨 Original message (full payload)
-                    </p>
-                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md bg-gray-50 p-2 text-xs text-gray-700">
-                      {JSON.stringify(msg.raw_data, null, 2)}
-                    </pre>
-                  </div>
-                )}
-
                 {/* Full outgoing payload sent to n8n */}
                 {msg.sent_payload && (
                   <div className="mb-3 rounded-lg border border-emerald-200 bg-white p-3">
@@ -547,18 +535,6 @@ export default function MessagesPage() {
                   {selectedMessage.message}
                 </p>
               </div>
-
-              {/* Original / complete message */}
-              {selectedMessage.raw_data && (
-                <div className="mb-4">
-                  <p className="mb-1.5 text-sm font-medium text-gray-700">
-                    📨 Original message (full payload)
-                  </p>
-                  <pre className="max-h-60 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-gray-50 p-3 text-xs text-gray-700">
-                    {JSON.stringify(selectedMessage.raw_data, null, 2)}
-                  </pre>
-                </div>
-              )}
 
               {/* Full outgoing payload sent to n8n */}
               {selectedMessage.sent_payload && (
