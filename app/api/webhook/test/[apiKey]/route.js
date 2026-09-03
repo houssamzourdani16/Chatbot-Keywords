@@ -6,10 +6,10 @@ import User from "@/lib/models/user";
 import Message from "@/lib/models/message";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
-import { scheduleBatchProcessing } from "@/lib/services/batch-scheduler";
+import { processBatch } from "@/lib/services/batch-processor";
 
-// ✅ Allow the function to run up to 60s so the awaited batch processing
-//    (wait time + processing) completes before Vercel kills the function.
+// ✅ No timers. The batch is processed directly and awaited within this
+//    request, so it reliably reaches n8n without relying on setTimeout.
 export const maxDuration = 60;
 
 // ============================================
@@ -175,14 +175,11 @@ export async function POST(request, { params }) {
       `💾 Test message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}`,
     );
 
-    // ✅ AWAIT the batch processing. We wait for the product's wait time
-    //    to expire, then process the batch DIRECTLY in this function.
-    //    This keeps the function alive until the batch is processed —
-    //    reliable on BOTH local and serverless (Vercel), where a
-    //    fire-and-forget setTimeout would be frozen after the response.
-    //    processBatch re-reads expires_at from the DB and skips if a
-    //    newer message reset the timer (debounce still works).
-    await scheduleBatchProcessing(batch.expires_at, batch._id);
+    // ✅ Process the batch DIRECTLY (no timers). The message is already
+    //    saved and added to its batch; processBatch joins the batch's
+    //    messages, detects keywords + lead, and sends them to n8n. It
+    //    re-reads the batch state from the DB so nothing is double-processed.
+    await processBatch(batch._id, { force: true });
 
     return NextResponse.json({
       success: true,

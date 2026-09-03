@@ -68,13 +68,16 @@ export async function GET(request) {
     if (batchIds.length > 0) {
       try {
         const batches = await Batch.find({ _id: { $in: batchIds } })
-          .select("_id expires_at status sent_payload")
+          .select("_id expires_at status sent_payload waiting_time")
           .lean();
         batches.forEach((b) => {
           batchInfoMap[b._id.toString()] = {
             expires_at: b.expires_at,
             status: b.status,
             sent_payload: b.sent_payload || null,
+            // ✅ The wait time stored ON this batch — the SAME for every
+            //    message in this batch (and thereby for the same sender).
+            waiting_time: b.waiting_time || null,
           };
         });
       } catch (e) {
@@ -194,7 +197,16 @@ export async function GET(request) {
         sent_payload: batchInfo?.sent_payload || null,
         product_id: m.product_id,
         product_name: productMap[productKey] || "Unknown",
-        waiting_time: productWaitMap[productKey] || 7,
+        // ✅ Use the PRODUCT'S waiting_time as the source of truth. This
+        //    ensures ALL messages from the same sender ALWAYS show the SAME
+        //    wait time, regardless of when they were processed or if
+        //    product settings changed. Fall back to batch value (should match),
+        //    then message value (for backwards compatibility with old records).
+        waiting_time:
+          productWaitMap[productKey] ||
+          batchInfo?.waiting_time ||
+          m.waiting_time ||
+          7,
         sender_id: m.sender_id,
         message: messageText,
         raw_data: m.raw_data || null,
@@ -241,11 +253,7 @@ export async function DELETE(request) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const body = await request.json().catch(() => ({}));
-    const ids = Array.isArray(body.ids)
-      ? body.ids
-      : body.id
-        ? [body.id]
-        : [];
+    const ids = Array.isArray(body.ids) ? body.ids : body.id ? [body.id] : [];
 
     if (ids.length === 0) {
       return NextResponse.json(

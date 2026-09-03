@@ -5,12 +5,11 @@ import Product from "@/lib/models/product";
 import User from "@/lib/models/user";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
-import { scheduleBatchProcessing } from "@/lib/services/batch-scheduler";
+import { processBatch } from "@/lib/services/batch-processor";
 
-// ✅ Allow the function to run up to 60s so the awaited batch processing
-//    (wait time + processing) completes before Vercel kills the function.
-//    Without this, Vercel's default 10s limit would terminate the function
-//    mid-processing and the batch would never be sent.
+// ✅ No timers. The batch is processed directly and awaited within this
+//    request, so it reliably reaches n8n on both local and serverless
+//    (Vercel) without relying on setTimeout or a cron.
 export const maxDuration = 60;
 
 // ============================================
@@ -227,24 +226,17 @@ export async function POST(request, { params }) {
     }
 
     // ============================================
-    // ✅ 6. AWAIT the batch processing. We wait for the product's
-    //    wait time to expire, then process the batch DIRECTLY in this
-    //    function. This keeps the function alive until the batch is
-    //    processed — reliable on BOTH local and serverless (Vercel),
-    //    where a fire-and-forget setTimeout would be frozen after the
-    //    response is returned.
-    //
-    //    The debounce still works correctly: scheduleBatchProcessing
-    //    re-reads the batch's LATEST expires_at from the DB, so if a
-    //    newer message from the same sender reset the timer, we wait for
-    //    the FULL new window. The cron (`/api/batches/process` every
-    //    minute) remains as a safety net.
+    // ✅ 6. PROCESS THE BATCH DIRECTLY (no timers)
+    //    We save the messages, then process the batch right here. All
+    //    messages that landed in this batch (grouped by product+sender) get
+    //    joined, keywords + lead detected, and sent to n8n. processBatch
+    //    re-reads the batch state from the DB so nothing is double-processed.
     // ============================================
-    await scheduleBatchProcessing(lastBatch.expires_at, lastBatch._id);
+    await processBatch(lastBatch._id, { force: true });
 
     return NextResponse.json({
       success: true,
-      message: "✅ Webhook received successfully",
+      message: "✅ Messages saved and sent to n8n",
       message_id: lastSavedMessage._id,
       batch_id: lastBatch._id,
       mode: "prod",

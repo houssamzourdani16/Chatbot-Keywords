@@ -5,6 +5,7 @@ import Product from "@/lib/models/product";
 import Message from "@/lib/models/message";
 import { revalidatePath } from "next/cache";
 import jwt from "jsonwebtoken";
+import { resolveWaitingTime } from "@/lib/services/waiting-time.service";
 
 // ============================================
 // ✅ GENERATE API KEY
@@ -158,6 +159,11 @@ export async function POST(request) {
 
     console.log(`✅ Unique API key generated: ${apiKey}`);
 
+    // ✅ Resolve the waiting time from Settings (default + max clamp).
+    //    The destructured `waiting_time` above holds the raw form value;
+    //    `resolvedWaitingTime` is the validated value (default + clamp).
+    const resolvedWaitingTime = await resolveWaitingTime(waiting_time ?? null);
+
     // Create product
     const product = new Product({
       user_id: decoded.userId,
@@ -168,7 +174,7 @@ export async function POST(request) {
       api_key: apiKey,
       webhook_url: webhook_url || undefined,
       webhook_url_test: webhook_url_test || undefined,
-      waiting_time: parseInt(waiting_time) || 7,
+      waiting_time: resolvedWaitingTime,
       mode: "test", // ✅ Default to TEST mode
       category: category || "",
       subcategory: subcategory || "",

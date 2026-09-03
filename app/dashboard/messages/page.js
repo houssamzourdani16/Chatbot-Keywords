@@ -27,10 +27,23 @@ function secondsUntil(expiresAt, now) {
 
 // ⏳ Live countdown badge for a received message. Ticks down every second
 //    (e.g. 5 → 4 → 3 → 2 → 1) until the batch timer expires.
-function LiveCountdownBadge({ expiresAt, waitingTime, now }) {
+function LiveCountdownBadge({ expiresAt, waitingTime, now, status }) {
   const secs = secondsUntil(expiresAt, now);
 
+  // For processed messages (completed/failed), the batch timer has already
+  // run. Show the static wait time (consistent per sender) instead of a
+  // misleading countdown. This ensures ALL messages from the same sender
+  // show the SAME wait time value.
+  if (status && status !== "received") {
+    return (
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+        ⏱️ {waitingTime}s
+      </span>
+    );
+  }
+
   // No batch expiry info — show the static wait time as a fallback.
+  // This is the CONSISTENT wait time for all messages from the same sender.
   if (secs === null) {
     return (
       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
@@ -39,11 +52,14 @@ function LiveCountdownBadge({ expiresAt, waitingTime, now }) {
     );
   }
 
-  // Timer expired but the batch is still received (nothing picked it up yet).
+  // Timer expired or about to expire, but batch is still "received".
+  // Show the static waiting_time (not "0s") to be consistent with other
+  // messages from the same sender. The batch will be picked up by the
+  // processing worker shortly.
   if (secs <= 0) {
     return (
-      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
-        ⏱️ 0s → processing
+      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+        ⏱️ {waitingTime}s
       </span>
     );
   }
@@ -110,7 +126,7 @@ export default function MessagesPage() {
   const getToken = () => localStorage.getItem("accessToken");
 
   const fetchMessages = useCallback(
-    async ({ silent = false } = {}) => {
+    async ({ silent = false, full = false } = {}) => {
       if (!silent) setLoadingMessages(true);
       setError("");
       try {
@@ -119,13 +135,23 @@ export default function MessagesPage() {
         if (statusFilter) params.set("status", statusFilter);
         if (senderFilter) params.set("senderId", senderFilter);
 
-        const res = await fetch(`/api/messages?${params}`, {
+        // ✅ Use FAST endpoint for polling (200-300ms)
+        // ✅ Use FULL endpoint only for initial load or detail views (full=true)
+        const endpoint = full ? "/api/messages" : "/api/messages/fast";
+        const res = await fetch(`${endpoint}?${params}`, {
           headers: { Authorization: `Bearer ${getToken()}` },
         });
         const data = await res.json();
         if (data.success) {
           setMessages(data.messages);
           setTotalPages(data.totalPages || 1);
+          if (!silent) {
+            console.log(
+              `✅ Fetched ${data.count} messages from ${endpoint} ${
+                full ? "(full enrichment)" : "(fast, no enrichment)"
+              }`,
+            );
+          }
         } else {
           setError(data.error || "Failed to load messages");
         }
@@ -157,14 +183,15 @@ export default function MessagesPage() {
     }
   }, [user, fetchMessages, fetchProducts]);
 
-  // ✅ Smooth auto-refresh: poll for new messages every 5 seconds in the
-  //    background (silent) so the page updates without a visible reload
-  //    or loading spinner.
+  // ✅ Smooth auto-refresh: poll for new messages every 1 second using FAST endpoint
+  //    (no enrichment). This is now much cheaper (~200ms) so we can poll faster.
+  //    Silent updates mean no loading spinner, and the fast endpoint returns quickly.
+  //    Backend returns full enrichment on demand (for detail views) separately.
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(() => {
-      fetchMessages({ silent: true });
-    }, 5000);
+      fetchMessages({ silent: true, full: false }); // ✅ Use FAST endpoint
+    }, 1000); // ✅ Poll every 1s (was 2s, now faster because endpoint is faster)
     return () => clearInterval(interval);
   }, [user, fetchMessages]);
 
@@ -323,17 +350,12 @@ export default function MessagesPage() {
                       <p className="text-sm font-semibold text-gray-900">
                         {msg.product_name}
                       </p>
-                      {msg.status === "received" ? (
-                        <LiveCountdownBadge
-                          expiresAt={msg.batch_expires_at}
-                          waitingTime={msg.waiting_time || 7}
-                          now={now}
-                        />
-                      ) : (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                          ⏱️ {msg.waiting_time || 7}s
-                        </span>
-                      )}
+                      <LiveCountdownBadge
+                        expiresAt={msg.batch_expires_at}
+                        waitingTime={msg.waiting_time || 7}
+                        now={now}
+                        status={msg.status}
+                      />
                     </div>
                     <p className="text-xs text-gray-500">
                       Sender: {msg.sender_id}
@@ -469,7 +491,8 @@ export default function MessagesPage() {
                     {new Date(msg.created_at).toLocaleString()}
                   </p>
                   <div className="flex items-center gap-2">
-                    {msg.status === "failed" && (
+                    {(msg.status === "failed" ||
+                      msg.status === "completed") && (
                       <button
                         onClick={() => deleteMessage(msg.id)}
                         className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"
