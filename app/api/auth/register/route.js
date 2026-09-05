@@ -3,6 +3,20 @@ import dbConnect from "@/lib/database/database";
 import User from "@/lib/models/user";
 import bcrypt from "bcryptjs";
 
+// ✅ Generate a unique Facebook/Meta webhook verify token for a user.
+//    This token is personal to the user and can be used on ALL their
+//    products while configuring the webhook in the Meta dashboard.
+function generateVerifyToken() {
+  return (
+    "vt_" +
+    Array.from({ length: 24 }, () =>
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".charAt(
+        Math.floor(Math.random() * 62),
+      ),
+    ).join("")
+  );
+}
+
 export async function POST(request) {
   try {
     const { name, email, password } = await request.json();
@@ -31,6 +45,7 @@ export async function POST(request) {
       name,
       email,
       password: hashedPassword,
+      verifyToken: generateVerifyToken(),
     });
 
     return NextResponse.json(
@@ -41,6 +56,7 @@ export async function POST(request) {
           id: newuser._id,
           name: newuser.name,
           email: newuser.email,
+          verifyToken: newuser.verifyToken,
         },
       },
       { status: 201 },

@@ -70,6 +70,7 @@ export default function DashboardPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
+  const [showUserInfo, setShowUserInfo] = useState(false);
 
   // Edit / Delete / Messages state
   const [editingProduct, setEditingProduct] = useState(null);
@@ -98,7 +99,6 @@ export default function DashboardPage() {
 
   // Live message notifications
   const [notifications, setNotifications] = useState([]);
-  const [dbConnected, setDbConnected] = useState(null); // null | true | false
   const [notifPanelOpen, setNotifPanelOpen] = useState(true);
   const knownMessageIds = useRef(new Set());
 
@@ -136,10 +136,8 @@ export default function DashboardPage() {
       const data = await res.json();
 
       if (data.connected === false) {
-        setDbConnected(false);
         return;
       }
-      setDbConnected(true);
 
       if (data.success && Array.isArray(data.messages)) {
         // Track the newest message id we've seen
@@ -168,8 +166,7 @@ export default function DashboardPage() {
         knownMessageIds.current = next;
       }
     } catch {
-      // Network error — don't spam, just mark disconnected
-      setDbConnected(false);
+      // Network error — don't spam, just skip this poll cycle
     }
   }, [pushNotification]);
 
@@ -466,39 +463,71 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* ===== Top Navbar ===== */}
+      {/* ===== Top Navbar (single compact line) ===== */}
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-600 to-purple-600 text-lg text-white shadow-lg shadow-indigo-600/20">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+          {/* Logo */}
+          <div className="flex shrink-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-indigo-600 to-purple-600 text-base text-white shadow-lg shadow-indigo-600/20">
               📊
             </div>
-            <div>
-              <p className="text-base font-bold text-slate-900">Dashboard</p>
-              <p className="text-xs text-slate-500">Control Center</p>
+            <div className="leading-tight">
+              <p className="text-sm font-bold text-slate-900">Dashboard</p>
+              <p className="text-[10px] text-slate-500">Control Center</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Nav tabs + right controls on one line */}
+          <div className="flex items-center gap-2">
+            {/* Nav tabs */}
+            <nav className="hidden items-center gap-1 md:flex">
+              {navItems.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    if (tab.href) {
+                      router.push(tab.href);
+                    } else {
+                      setActiveView(tab.id);
+                    }
+                  }}
+                  className={`relative whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    activeView === tab.id && !tab.href
+                      ? "bg-indigo-50 text-indigo-600"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                  }`}
+                >
+                  <span className="mr-1">{tab.icon}</span>
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+
             {(user.role === "admin" || user.role === "super_admin") && (
               <button
                 onClick={() => router.push("/admin")}
-                className="rounded-lg bg-linear-to-r from-purple-600 to-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md shadow-purple-600/20 transition-all hover:shadow-lg hover:shadow-purple-600/30"
+                className="rounded-lg bg-linear-to-r from-purple-600 to-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-md shadow-purple-600/20 transition-all hover:shadow-lg hover:shadow-purple-600/30"
               >
-                🛡️ Admin Panel
+                🛡️ <span className="hidden lg:inline">Admin Panel</span>
               </button>
             )}
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-indigo-500 to-purple-500 text-sm font-semibold text-white">
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white">
                 {user.name?.charAt(0).toUpperCase()}
               </div>
-              <span className="hidden text-sm font-medium text-slate-700 sm:block">
+              <span className="hidden text-sm font-medium text-slate-700 md:block">
                 {user.name}
               </span>
             </div>
             <button
+              onClick={() => setShowUserInfo(true)}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              👤 Info
+            </button>
+            <button
               onClick={handleLogout}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
             >
               Logout
             </button>
@@ -506,36 +535,26 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ===== Navigation Tabs ===== */}
-      <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6">
-          {navItems.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                if (tab.href) {
-                  router.push(tab.href);
-                } else {
-                  setActiveView(tab.id);
-                }
-              }}
-              className={`relative whitespace-nowrap px-5 py-3.5 text-sm font-medium transition-colors ${
-                activeView === tab.id
-                  ? "text-indigo-600"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              <span className="mr-1.5">{tab.icon}</span>
-              {tab.label}
-              {activeView === tab.id && (
-                <span className="absolute inset-x-0 -bottom-px h-0.5 bg-linear-to-r from-indigo-600 to-purple-600" />
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        {/* ===== Compact Webhook Verify Token banner (top) ===== */}
+        {user.verifyToken && (
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex items-center gap-2 text-sm">
+              <span>🔑</span>
+              <span className="font-semibold text-slate-800">Verify Token</span>
+              <code className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                {user.verifyToken}
+              </code>
+            </div>
+            <button
+              onClick={() => copyToClipboard(user.verifyToken, "verify")}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              {copiedId === "verify" ? "✅ Copied" : "📋 Copy"}
+            </button>
+          </div>
+        )}
+
         {/* ===== Live Message Notifications Panel (right side) ===== */}
         {notifPanelOpen && (
           <div className="fixed right-4 top-20 z-50 flex max-h-[calc(100vh-6rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10">
@@ -694,44 +713,6 @@ export default function DashboardPage() {
         )}
 
         {/* ===== DB Connection Status ===== */}
-        {dbConnected !== null && (
-          <div
-            className={`mb-6 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm ${
-              dbConnected
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border-rose-200 bg-rose-50 text-rose-700"
-            }`}
-          >
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                dbConnected ? "bg-emerald-500" : "bg-rose-500"
-              } ${dbConnected ? "animate-pulse" : ""}`}
-            />
-            {dbConnected
-              ? "🟢 Connected to database — listening for incoming messages"
-              : "🔴 Database connection lost — retrying..."}
-          </div>
-        )}
-
-        {/* ===== Welcome Banner ===== */}
-        <div className="mb-8 overflow-hidden rounded-2xl bg-linear-to-r from-indigo-600 via-purple-600 to-indigo-600 p-8 text-white shadow-xl shadow-indigo-600/20">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold sm:text-3xl">
-                Welcome back, {user.name}! 👋
-              </h1>
-              <p className="mt-1 text-indigo-100">
-                Manage your products and monitor your webhook activity.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowCreateForm(true)}
-              className="rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-indigo-600 shadow-md transition-all hover:bg-indigo-50"
-            >
-              + New Product
-            </button>
-          </div>
-        </div>
 
         {/* ===== Messages ===== */}
         {message && (
@@ -1459,6 +1440,108 @@ export default function DashboardPage() {
           </>
         )}
       </main>
+
+      {/* ===== User Info Modal ===== */}
+      {showUserInfo && user && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowUserInfo(false)}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+            {/* Header */}
+            <div className="bg-linear-to-r from-indigo-600 to-purple-600 px-6 py-6 text-white">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 text-2xl font-bold">
+                  {user.name?.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">{user.name}</h3>
+                  <p className="text-sm text-indigo-100">{user.email}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="space-y-4 px-6 py-6">
+              {/* Full name */}
+              <div className="rounded-xl bg-slate-50 p-4">
+                <p className="text-xs font-medium text-slate-500">
+                  👤 Full Name
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {user.name}
+                </p>
+              </div>
+
+              {/* Email */}
+              <div className="rounded-xl bg-slate-50 p-4">
+                <p className="text-xs font-medium text-slate-500">📧 Email</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {user.email}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">🎖️ Role</p>
+                  <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
+                    {user.role}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">💎 Plan</p>
+                  <p className="mt-1 text-sm font-semibold capitalize text-slate-900">
+                    {user.plan || "Basic"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-500">
+                    📅 Member Since
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {user.createdAt
+                      ? new Date(user.createdAt).toLocaleDateString()
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-4">
+                <p className="text-xs font-medium text-slate-500">
+                  🔑 Your Verify Token
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <code className="flex-1 truncate rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                    {user.verifyToken || "Generating..."}
+                  </code>
+                  {user.verifyToken && (
+                    <button
+                      onClick={() => copyToClipboard(user.verifyToken, "info")}
+                      className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                    >
+                      {copiedId === "info" ? "✅" : "📋"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-100 px-6 py-4">
+              <button
+                onClick={() => setShowUserInfo(false)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== Edit Product Modal ===== */}
       {editingProduct && (

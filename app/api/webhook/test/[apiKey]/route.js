@@ -4,6 +4,7 @@ import dbConnect from "@/lib/database/database";
 import Product from "@/lib/models/product";
 import User from "@/lib/models/user";
 import Message from "@/lib/models/message";
+import Setting from "@/lib/models/setting";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
@@ -12,13 +13,28 @@ import { processBatch } from "@/lib/services/batch-processor";
 //    request, so it reliably reaches n8n without relying on setTimeout.
 export const maxDuration = 60;
 
+// ✅ Read the daily TEST-call limit from the admin Settings.
+//    Falls back to 25 when not configured. Super admins can change it in
+//    Admin → Settings → Webhook Settings → "Test Calls Per Day".
+const DEFAULT_TEST_LIMIT = 25;
+async function getTestLimit() {
+  try {
+    const setting = await Setting.findOne({ key: "test_calls_per_day" }).lean();
+    const value = parseInt(setting?.value, 10);
+    if (Number.isFinite(value) && value > 0) return value;
+  } catch (err) {
+    console.error("⚠️ Failed to read test_calls_per_day:", err.message);
+  }
+  return DEFAULT_TEST_LIMIT;
+}
+
 // ============================================
 // ✅ META / FACEBOOK WEBHOOK VERIFICATION (GET)
 //    Handles the GET hub.challenge verification
 //    sent by Facebook/Meta so the TEST webhook can
 //    be connected in the Meta developer dashboard.
 // ============================================
-export async function GET(request) {
+export async function GET(request, { params }) {
   const url = new URL(request.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
@@ -26,13 +42,33 @@ export async function GET(request) {
 
   console.log("🔍 TEST webhook verification request:", {
     mode,
-    token,
+    token: token ? "***" : null,
     challenge,
   });
 
   if (mode === "subscribe" && challenge) {
     const verifyToken = process.env.META_VERIFY_TOKEN || "";
-    const acceptedTokens = [verifyToken, "your_verify_token_here"]
+
+    // ✅ Accept the product owner's personal verify token (one per user,
+    //    reusable across ALL their products).
+    let ownerAcceptedToken = null;
+    try {
+      const { apiKey } = await params;
+      await dbConnect();
+      const product = await Product.findOne({ api_key: apiKey });
+      if (product && apiKey) {
+        const owner = await User.findById(product.user_id);
+        ownerAcceptedToken = owner?.verifyToken || null;
+      }
+    } catch (err) {
+      console.error("⚠️ Failed to look up owner verify token:", err.message);
+    }
+
+    const acceptedTokens = [
+      verifyToken,
+      ownerAcceptedToken,
+      "your_verify_token_here",
+    ]
       .map((t) => t?.trim())
       .filter(Boolean);
 
@@ -46,7 +82,6 @@ export async function GET(request) {
 
     console.log("❌ TEST verification failed: Token mismatch", {
       received: token,
-      expected: verifyToken,
     });
     return new Response("Verification failed - token mismatch", {
       status: 403,
@@ -76,15 +111,19 @@ export async function POST(request, { params }) {
     console.log(`🧪 TEST webhook called with API Key: ${apiKey}`);
 
     // ============================================
-    // ✅ FIX: Preload product (start loading NOW!)
+    // ✅ FIX: Preload product + test limit (start loading NOW!)
     // ============================================
     const productPromise = Product.findOne({ api_key: apiKey }); // ← Line 24 fixed!
+    const testLimitPromise = getTestLimit(); // reads admin Settings in parallel
 
     // Do any other work that doesn't need product...
     // (like validation, preparing data, etc.)
 
-    // Now await product
-    const product = await productPromise; // ← Now await it
+    // Now await product + limit together
+    const [product, DAILY_LIMIT] = await Promise.all([
+      productPromise,
+      testLimitPromise,
+    ]);
 
     if (!product) {
       console.log("❌ Product not found for API Key:", apiKey);
@@ -94,9 +133,10 @@ export async function POST(request, { params }) {
     console.log(`✅ Product found: ${product.name}`);
 
     // ============================================
-    // ✅ RATE LIMIT: Max 5 test calls per day
+    // ✅ RATE LIMIT: Configurable daily test calls
+    //    (default 25/day, changeable by super admin
+    //    in Admin → Settings → Webhook Settings).
     // ============================================
-    const DAILY_LIMIT = 5;
 
     // Start of today (local time)
     const startOfDay = new Date();

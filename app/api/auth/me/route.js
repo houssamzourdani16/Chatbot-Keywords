@@ -3,6 +3,27 @@ import dbConnect from "@/lib/database/database";
 import User from "@/lib/models/user";
 import jwt from "jsonwebtoken";
 
+// ✅ Generate a unique Facebook/Meta webhook verify token for a user.
+function generateVerifyToken() {
+  return (
+    "vt_" +
+    Array.from({ length: 24 }, () =>
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".charAt(
+        Math.floor(Math.random() * 62),
+      ),
+    ).join("")
+  );
+}
+
+// ✅ Ensure the user has a verify token (backfills existing users).
+async function ensureVerifyToken(user) {
+  if (!user.verifyToken) {
+    user.verifyToken = generateVerifyToken();
+    await user.save();
+  }
+  return user;
+}
+
 export async function GET(request) {
   try {
     await dbConnect();
@@ -40,6 +61,9 @@ export async function GET(request) {
       return NextResponse.json({ isAuthenticated: false }, { status: 401 });
     }
 
+    // ✅ Backfill/ensure a per-user verify token exists
+    await ensureVerifyToken(user);
+
     return NextResponse.json({
       isAuthenticated: true,
       user: {
@@ -47,7 +71,10 @@ export async function GET(request) {
         name: user.name,
         email: user.email,
         role: user.role,
+        plan: user.plan,
         blacklisted: user.blacklisted,
+        verifyToken: user.verifyToken,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {

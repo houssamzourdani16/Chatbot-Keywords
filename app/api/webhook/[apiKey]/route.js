@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/database/database";
 import Product from "@/lib/models/product";
 import User from "@/lib/models/user";
+import Message from "@/lib/models/message";
+import Setting from "@/lib/models/setting";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
@@ -11,6 +13,20 @@ import { processBatch } from "@/lib/services/batch-processor";
 //    request, so it reliably reaches n8n on both local and serverless
 //    (Vercel) without relying on setTimeout or a cron.
 export const maxDuration = 60;
+
+// ✅ Read the daily PRODUCTION-call limit from the admin Settings.
+//    Super admins can change it in Admin → Settings → Webhook Settings.
+const DEFAULT_PROD_LIMIT = 10000;
+async function getProdLimit() {
+  try {
+    const setting = await Setting.findOne({ key: "prod_calls_per_day" }).lean();
+    const value = parseInt(setting?.value, 10);
+    if (Number.isFinite(value) && value > 0) return value;
+  } catch (err) {
+    console.error("⚠️ Failed to read prod_calls_per_day:", err.message);
+  }
+  return DEFAULT_PROD_LIMIT;
+}
 
 // ============================================
 // ✅ FASTER PROCESSING
@@ -33,7 +49,7 @@ export const maxDuration = 60;
 //    else (300+, JSON body) makes Facebook's
 //    verification fail with #N/A errors.
 // ============================================
-export async function GET(request) {
+export async function GET(request, { params }) {
   const url = new URL(request.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
@@ -41,7 +57,7 @@ export async function GET(request) {
 
   console.log("🔍 Webhook verification request:", {
     mode,
-    token,
+    token: token ? "***" : null,
     challenge,
   });
 
@@ -49,10 +65,27 @@ export async function GET(request) {
   if (mode === "subscribe" && challenge) {
     const verifyToken = process.env.META_VERIFY_TOKEN || "";
 
-    // ✅ ALSO accept the fallback so verification works even if the
-    //    env var isn't deployed yet. Trim both sides to avoid
-    //    subtle whitespace mismatches from copy/paste.
-    const acceptedTokens = [verifyToken, "your_verify_token_here"]
+    // ✅ The webhook is per PRODUCT (apiKey in the URL). Look up the
+    //    product's owner so we can accept the owner's personal verify
+    //    token — one token per user, usable on ALL their products.
+    let ownerAcceptedToken = null;
+    try {
+      const { apiKey } = await params;
+      await dbConnect();
+      const product = await Product.findOne({ api_key: apiKey });
+      if (product) {
+        const owner = await User.findById(product.user_id);
+        ownerAcceptedToken = owner?.verifyToken || null;
+      }
+    } catch (err) {
+      console.error("⚠️ Failed to look up owner verify token:", err.message);
+    }
+
+    const acceptedTokens = [
+      verifyToken,
+      ownerAcceptedToken,
+      "your_verify_token_here",
+    ]
       .map((t) => t?.trim())
       .filter(Boolean);
 
@@ -67,7 +100,6 @@ export async function GET(request) {
 
     console.log("❌ Verification failed: Token mismatch", {
       received: token,
-      expected: verifyToken,
     });
     return new Response("Verification failed - token mismatch", {
       status: 403,
@@ -90,6 +122,7 @@ export async function POST(request, { params }) {
 
     // ✅ Preload the product query NOW (overlaps with JSON parsing below)
     const productPromise = Product.findOne({ api_key: apiKey });
+    const prodLimitPromise = getProdLimit(); // read admin setting in parallel
 
     // ✅ Capture the FULL payload as raw_data (can hold anything)
     const data = await request.json();
@@ -137,7 +170,10 @@ export async function POST(request, { params }) {
     // ============================================
     // ✅ 1. Validate the API key against the DB
     // ============================================
-    const product = await productPromise;
+    const [product, DAILY_LIMIT] = await Promise.all([
+      productPromise,
+      prodLimitPromise,
+    ]);
 
     if (!product) {
       return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
@@ -150,6 +186,34 @@ export async function POST(request, { params }) {
 
     if (!owner) {
       return NextResponse.json({ error: "Owner not found" }, { status: 404 });
+    }
+
+    // ============================================
+    // ✅ 2b. RATE LIMIT (production): configurable daily
+    //    limit per product (Admin → Settings → Webhook).
+    // ============================================
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const todayProd = await Message.countDocuments({
+      product_id: product._id,
+      mode: "prod",
+      created_at: { $gte: startOfDay },
+    });
+
+    if (todayProd >= DAILY_LIMIT) {
+      console.log(
+        `🚫 Prod rate limit reached for ${product.name}: ${todayProd}/${DAILY_LIMIT} today`,
+      );
+      return NextResponse.json(
+        {
+          error: `Production rate limit exceeded. Maximum ${DAILY_LIMIT} calls per day.`,
+          used: todayProd,
+          limit: DAILY_LIMIT,
+          resetsAt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000),
+        },
+        { status: 429 },
+      );
     }
 
     // ============================================

@@ -86,6 +86,18 @@ const SETTING_GROUPS = [
         type: "number",
         default: "3",
       },
+      {
+        key: "test_calls_per_day",
+        label: "Test Calls Per Day (per product)",
+        type: "number",
+        default: "25",
+      },
+      {
+        key: "prod_calls_per_day",
+        label: "Production Calls Per Day (per product)",
+        type: "number",
+        default: "10000",
+      },
     ],
   },
   {
