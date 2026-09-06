@@ -64,6 +64,7 @@ export async function GET(request) {
           description: p.description,
           api_key: p.api_key,
           webhook_url: p.webhook_url,
+          waiting_time_enabled: p.waiting_time_enabled,
           waiting_time: p.waiting_time,
           status: p.status || "Active",
           created_at: p.created_at,

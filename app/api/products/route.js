@@ -89,6 +89,7 @@ export async function POST(request) {
       webhook_url,
       webhook_url_test,
       waiting_time,
+      waiting_time_enabled,
       category,
       subcategory,
       name_ar,
@@ -162,7 +163,11 @@ export async function POST(request) {
     // ✅ Resolve the waiting time from Settings (default + max clamp).
     //    The destructured `waiting_time` above holds the raw form value;
     //    `resolvedWaitingTime` is the validated value (default + clamp).
-    const resolvedWaitingTime = await resolveWaitingTime(waiting_time ?? null);
+    //    If wait time is DISABLED the stored value is 0 (instant send).
+    const resolvedWaitingTime =
+      waiting_time_enabled === false
+        ? 0
+        : await resolveWaitingTime(waiting_time ?? null);
 
     // Create product
     const product = new Product({
@@ -174,6 +179,7 @@ export async function POST(request) {
       api_key: apiKey,
       webhook_url: webhook_url || undefined,
       webhook_url_test: webhook_url_test || undefined,
+      waiting_time_enabled: waiting_time_enabled !== false,
       waiting_time: resolvedWaitingTime,
       mode: "test", // ✅ Default to TEST mode
       category: category || "",

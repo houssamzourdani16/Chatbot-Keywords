@@ -76,6 +76,7 @@ export async function PUT(request, { params }) {
       "quantity",
       "description",
       "waiting_time",
+      "waiting_time_enabled",
       "status",
       "category",
       "subcategory",

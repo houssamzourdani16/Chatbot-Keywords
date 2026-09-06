@@ -256,14 +256,17 @@ export async function POST(request, { params }) {
       }
 
       // ✅ 5. Add message to a debounced batch
-      //    - Uses product.waiting_time (default 7s)
-      //    - RESETS the timer if same sender sends again
+      //    - When wait time is ENABLED, uses product.waiting_time (default 7s)
+      //      and messages from the same sender JOIN together (debounce).
+      //    - When wait time is DISABLED, waiting_time is 0 so it sends instantly.
+      const waitEnabled = product.waiting_time_enabled !== false;
+      const effectiveWaitingTime = waitEnabled ? product.waiting_time || 7 : 0;
       const { batch, message: savedMessage } = await addMessageToBatch({
         user_id: owner._id,
         product_id: product._id,
         sender_id,
         messageData: data,
-        waiting_time: product.waiting_time || 7,
+        waiting_time: effectiveWaitingTime,
         incoming_message: message,
         detected_keywords: detectedKeywords,
         keyword_data: keywordData,
@@ -290,13 +293,14 @@ export async function POST(request, { params }) {
     }
 
     // ============================================
-    // ✅ 6. PROCESS THE BATCH DIRECTLY (no timers)
-    //    We save the messages, then process the batch right here. All
-    //    messages that landed in this batch (grouped by product+sender) get
-    //    joined, keywords + lead detected, and sent to n8n. processBatch
-    //    re-reads the batch state from the DB so nothing is double-processed.
+    // ✅ 6. PROCESS THE BATCH
+    //    - If wait time is ENABLED (debounce > 0s), do NOT force. The
+    //      batch stays open and the scheduler (/api/batches/process) picks
+    //      it up once expires_at passes, JOINING all messages that landed
+    //      from the same sender within the window.
+    //    - If wait time is DISABLED (0s), process immediately.
     // ============================================
-    await processBatch(lastBatch._id, { force: true });
+    await processBatch(lastBatch._id, { force: !lastBatch.waiting_time });
 
     return NextResponse.json({
       success: true,

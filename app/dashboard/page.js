@@ -68,6 +68,7 @@ export default function DashboardPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [waitTimeEnabled, setWaitTimeEnabled] = useState(true);
   const [copiedId, setCopiedId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [showUserInfo, setShowUserInfo] = useState(false);
@@ -288,6 +289,10 @@ export default function DashboardPage() {
     if (selectedKeywordList) {
       formData.append("keyword_list_id", selectedKeywordList);
     }
+    formData.append("waiting_time_enabled", String(waitTimeEnabled));
+    if (!waitTimeEnabled) {
+      formData.set("waiting_time", "0");
+    }
     const result = await createProduct(formData);
 
     if (result.success) {
@@ -343,6 +348,10 @@ export default function DashboardPage() {
     setIsEditing(true);
     setMessage("");
     setError("");
+    formData.append("waiting_time_enabled", String(waitTimeEnabled));
+    if (!waitTimeEnabled) {
+      formData.set("waiting_time", "0");
+    }
     const result = await updateProduct(editingProduct._id, formData);
     if (result.success) {
       setMessage("✅ Product updated successfully!");
@@ -1045,7 +1054,10 @@ export default function DashboardPage() {
                 </p>
               </div>
               <button
-                onClick={() => setShowCreateForm(!showCreateForm)}
+                onClick={() => {
+                  setWaitTimeEnabled(true);
+                  setShowCreateForm(!showCreateForm);
+                }}
                 className="rounded-lg bg-linear-to-r from-indigo-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition-all hover:shadow-lg"
               >
                 {showCreateForm ? "✕ Cancel" : "+ New Product"}
@@ -1111,17 +1123,50 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-sm font-medium text-slate-700">
-                      Waiting Time (seconds)
+                      Wait Time
                     </label>
-                    <input
-                      type="number"
-                      name="waiting_time"
-                      placeholder="e.g. 5"
-                      min="1"
-                      max="30"
-                      className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    />
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setWaitTimeEnabled((v) => !v)}
+                        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                          waitTimeEnabled ? "bg-indigo-600" : "bg-slate-300"
+                        }`}
+                        aria-pressed={waitTimeEnabled}
+                      >
+                        <span
+                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                            waitTimeEnabled ? "translate-x-6" : "translate-x-1"
+                          }`}
+                        />
+                      </button>
+                      <span
+                        className={`text-sm font-semibold ${
+                          waitTimeEnabled ? "text-indigo-600" : "text-slate-400"
+                        }`}
+                      >
+                        {waitTimeEnabled
+                          ? "Wait before sending"
+                          : "Send instantly (no wait)"}
+                      </span>
+                    </div>
                   </div>
+                  {waitTimeEnabled && (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Waiting Time (seconds)
+                      </label>
+                      <input
+                        type="number"
+                        name="waiting_time"
+                        placeholder="e.g. 7"
+                        defaultValue="7"
+                        min="1"
+                        max="30"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                  )}
                   <div className="flex flex-col gap-1.5">
                     <label className="text-sm font-medium text-slate-700">
                       🤖 Select AI Model
@@ -1226,9 +1271,11 @@ export default function DashboardPage() {
                             <h3 className="text-lg font-bold text-slate-900">
                               {product.name}
                             </h3>
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                              ⏱️ {product.waiting_time || 7}s
-                            </span>
+                            {product.waiting_time_enabled !== false && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                                ⏱️ {product.waiting_time || 7}s
+                              </span>
+                            )}
                           </div>
                           <p className="mt-0.5 text-sm text-slate-500">
                             {product.description || "No description"}
@@ -1309,12 +1356,16 @@ export default function DashboardPage() {
                               {product.quantity}
                             </p>
                           </div>
-                          <div>
-                            <p className="text-xs text-slate-500">Wait Time</p>
-                            <p className="text-xl font-bold text-slate-900">
-                              {product.waiting_time || 7}s
-                            </p>
-                          </div>
+                          {product.waiting_time_enabled !== false && (
+                            <div>
+                              <p className="text-xs text-slate-500">
+                                Wait Time
+                              </p>
+                              <p className="text-xl font-bold text-slate-900">
+                                {product.waiting_time || 7}s
+                              </p>
+                            </div>
+                          )}
                         </div>
 
                         {(product.name_ar || product.name_fr) && (
@@ -1419,7 +1470,12 @@ export default function DashboardPage() {
                               : "🧪 Test"}
                           </button>
                           <button
-                            onClick={() => setEditingProduct(product)}
+                            onClick={() => {
+                              setWaitTimeEnabled(
+                                product.waiting_time_enabled !== false,
+                              );
+                              setEditingProduct(product);
+                            }}
                             className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
                           >
                             ✏️ Edit
@@ -1631,17 +1687,49 @@ export default function DashboardPage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
-                  Waiting Time (seconds)
+                  Wait Time
                 </label>
-                <input
-                  type="number"
-                  name="waiting_time"
-                  defaultValue={editingProduct.waiting_time || 7}
-                  min="1"
-                  max="30"
-                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setWaitTimeEnabled((v) => !v)}
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                      waitTimeEnabled ? "bg-indigo-600" : "bg-slate-300"
+                    }`}
+                    aria-pressed={waitTimeEnabled}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                        waitTimeEnabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                  <span
+                    className={`text-sm font-semibold ${
+                      waitTimeEnabled ? "text-indigo-600" : "text-slate-400"
+                    }`}
+                  >
+                    {waitTimeEnabled
+                      ? "Wait before sending"
+                      : "Send instantly (no wait)"}
+                  </span>
+                </div>
               </div>
+              {waitTimeEnabled && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">
+                    Waiting Time (seconds)
+                  </label>
+                  <input
+                    type="number"
+                    name="waiting_time"
+                    defaultValue={editingProduct.waiting_time || 7}
+                    min="1"
+                    max="30"
+                    className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+              )}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">
                   Status

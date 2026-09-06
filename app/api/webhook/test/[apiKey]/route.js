@@ -196,12 +196,13 @@ export async function POST(request, { params }) {
     //    after the product's waiting_time expires.
     // ============================================
     const sender_id = data.sender_id || "test_sender";
+    const waitEnabled = product.waiting_time_enabled !== false;
     const { batch, message: savedMessage } = await addMessageToBatch({
       user_id: owner._id,
       product_id: product._id,
       sender_id,
       messageData: data,
-      waiting_time: product.waiting_time || 7,
+      waiting_time: waitEnabled ? product.waiting_time || 7 : 0,
       incoming_message: data.message,
       detected_keywords: detectedKeywords,
       keyword_data: keywordData,
@@ -215,11 +216,11 @@ export async function POST(request, { params }) {
       `💾 Test message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}`,
     );
 
-    // ✅ Process the batch DIRECTLY (no timers). The message is already
-    //    saved and added to its batch; processBatch joins the batch's
-    //    messages, detects keywords + lead, and sends them to n8n. It
-    //    re-reads the batch state from the DB so nothing is double-processed.
-    await processBatch(batch._id, { force: true });
+    // ✅ Process the batch.
+    //    - If wait time ENABLED: do NOT force — the batch stays open and
+    //      the scheduler joins later messages from the same sender.
+    //    - If wait time DISABLED (0s): process immediately.
+    await processBatch(batch._id, { force: !batch.waiting_time });
 
     return NextResponse.json({
       success: true,
