@@ -36,3 +36,13 @@ body {
     transform: translateX(0);
   }
 }
+
+/* Grow-up animation for dashboard bar chart bars */
+@keyframes growUp {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}

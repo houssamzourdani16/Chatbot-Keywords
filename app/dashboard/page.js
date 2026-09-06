@@ -58,6 +58,208 @@ function LiveCountdownBadge({ expiresAt, waitingTime, now }) {
   );
 }
 
+// ============================================
+// 🎨 Modern SVG chart components (no deps)
+// ============================================
+
+// Animated SVG bar chart with rounded bars, hover tooltip and gradient.
+function BarChart({ data, height = 200 }) {
+  const max = Math.max(...data.map((p) => p.count), 1);
+  const chartW = 600;
+  const chartH = height;
+  const padB = 28; // label space at bottom
+  const padT = 10;
+  const innerH = chartH - padB - padT;
+
+  return (
+    <div className="w-full">
+      <svg
+        viewBox={`0 0 ${chartW} ${chartH}`}
+        className="h-52 w-full overflow-visible"
+        preserveAspectRatio="none"
+      >
+        {/* Horizontal gridlines */}
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => (
+          <line
+            key={f}
+            x1="0"
+            x2={chartW}
+            y1={padT + innerH * (1 - f)}
+            y2={padT + innerH * (1 - f)}
+            stroke="#e2e8f0"
+            strokeWidth="1"
+            strokeDasharray={f === 1 ? "" : "4 4"}
+          />
+        ))}
+
+        {data.map((point, i) => {
+          const barW = chartW / data.length;
+          const barX = i * barW + barW * 0.18;
+          const barWid = barW * 0.64;
+          const h = (point.count / max) * innerH;
+          const y = padT + innerH - h;
+          return (
+            <g key={i}>
+              <rect
+                x={barX}
+                y={padT}
+                width={barWid}
+                height={innerH}
+                fill="transparent"
+              >
+                <title>{`${point.label}: ${point.count}`}</title>
+              </rect>
+              <rect
+                x={barX}
+                y={y}
+                width={barWid}
+                height={h}
+                rx={4}
+                fill={`url(#barGrad${i % 2})`}
+                className="transition-all duration-500"
+                style={{
+                  animation: "growUp 0.6s ease-out both",
+                  transformOrigin: "bottom",
+                }}
+              />
+              <text
+                x={barX + barWid / 2}
+                y={chartH - 8}
+                textAnchor="middle"
+                fontSize="9"
+                fill="#64748b"
+              >
+                {point.label}
+              </text>
+            </g>
+          );
+        })}
+        <defs>
+          <linearGradient id="barGrad0" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6366f1" />
+            <stop offset="100%" stopColor="#8b5cf6" />
+          </linearGradient>
+          <linearGradient id="barGrad1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#06b6d4" />
+            <stop offset="100%" stopColor="#3b82f6" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
+// Animated SVG donut chart (rings stroke-dasharray).
+function DonutChart({ percentage, color = "#6366f1" }) {
+  const r = 42;
+  const c = 2 * Math.PI * r;
+  const filled = (Math.min(Math.max(percentage, 0), 100) / 100) * c;
+
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <svg width="130" height="130" viewBox="0 0 100 100">
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          stroke="#e2e8f0"
+          strokeWidth="11"
+        />
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="11"
+          strokeLinecap="round"
+          strokeDasharray={`${filled} ${c - filled}`}
+          transform="rotate(-90 50 50)"
+          style={{ transition: "stroke-dasharray 0.8s ease" }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center">
+        <span className="text-xl font-extrabold text-slate-900">
+          {Math.round(percentage)}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Compact stat card with gradient icon + trend.
+function StatCard({ label, value, sub, icon, grad, spark }) {
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-slate-900/10">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
+            {value}
+          </p>
+          {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
+        </div>
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-linear-to-br ${grad} text-xl text-white shadow-md transition-transform duration-300 group-hover:scale-110`}
+        >
+          {icon}
+        </div>
+      </div>
+      {spark && (
+        <div className="mt-3 h-9 w-full opacity-40 transition-opacity group-hover:opacity-100">
+          <Sparkline data={spark} color={sparkColor(grad)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sparkColor(grad) {
+  if (grad.includes("emerald")) return "#10b981";
+  if (grad.includes("amber")) return "#f59e0b";
+  if (grad.includes("purple")) return "#a855f7";
+  return "#6366f1";
+}
+
+// Tiny inline sparkline.
+function Sparkline({ data, color = "#6366f1" }) {
+  if (!data || data.length === 0) return null;
+  const w = 200;
+  const h = 40;
+  const max = Math.max(...data, 1);
+  const step = w / Math.max(data.length - 1, 1);
+  const pts = data.map((v, i) => `${i * step},${h - (v / max) * (h - 4) - 2}`);
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="h-full w-full"
+      preserveAspectRatio="none"
+    >
+      <polyline
+        points={pts.join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {data.length > 0 && (
+        <line
+          x1="0"
+          y1={h - (data[data.length - 1] / max) * (h - 4) - 2}
+          x2={w}
+          y2={h - (data[data.length - 1] / max) * (h - 4) - 2}
+          stroke={color}
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          opacity="0.4"
+        />
+      )}
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const { user, loading } = useProtectPage();
   const router = useRouter();
@@ -843,6 +1045,79 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ===== HERO BANNER ===== */}
+        <section className="relative mb-8 overflow-hidden rounded-3xl bg-slate-900 p-8 text-white shadow-xl">
+          {/* Decorative glows */}
+          <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-purple-600/30 blur-3xl" />
+          <div className="pointer-events-none absolute -left-16 -bottom-24 h-72 w-72 rounded-full bg-indigo-600/30 blur-3xl" />
+          <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-indigo-600/20 via-transparent to-purple-600/20" />
+
+          <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-[1.4fr_1fr]">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-indigo-100 backdrop-blur">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                </span>
+                Control Center
+              </div>
+              <p className="mb-6 max-w-md text-sm text-indigo-100/80">
+                Suivez en temps réel vos messages, produits et performances
+                depuis un tableau de bord moderne.
+              </p>
+
+              {/* Hero quick stats — vibrant gradient cards */}
+              <div className="grid max-w-2xl grid-cols-3 gap-4">
+                <div className="rounded-2xl bg-linear-to-br from-indigo-500 to-blue-500 p-4 shadow-lg shadow-indigo-500/30">
+                  <p className="text-xs font-medium text-indigo-100">
+                    Messages
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold text-white">
+                    {analytics?.total ?? totalWebhookCalls}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-linear-to-br from-emerald-500 to-teal-500 p-4 shadow-lg shadow-emerald-500/30">
+                  <p className="text-xs font-medium text-emerald-100">
+                    Success
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold text-white">
+                    {analytics?.successRate ?? 100}%
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-linear-to-br from-purple-500 to-fuchsia-500 p-4 shadow-lg shadow-purple-500/30">
+                  <p className="text-xs font-medium text-purple-100">
+                    Products
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold text-white">
+                    {products.length}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Hero right: success donut */}
+            <div className="flex flex-col items-center justify-center rounded-3xl bg-linear-to-br from-emerald-500/20 to-teal-500/20 p-6 backdrop-blur">
+              <p className="text-sm font-semibold text-emerald-100">
+                Taux de succès
+              </p>
+              <DonutChart
+                percentage={analytics?.successRate ?? 100}
+                color="#10b981"
+              />
+              <div className="mt-2 flex items-center gap-3 text-xs text-white/90">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                  {analytics?.completed ?? 0} ok
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
+                  {analytics?.failed ?? 0} échec
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* ===== ANALYTICS SECTION ===== */}
         {activeView === "dashboard" && (
           <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -896,89 +1171,82 @@ export default function DashboardPage() {
               </div>
             ) : analytics ? (
               <div>
+                {/* Bar chart (modern graph) */}
+                <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">
+                        Messages over time
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {analytics.period === "day"
+                          ? "Par heure"
+                          : analytics.period === "week"
+                            ? "Par jour"
+                            : "Par semaine"}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600">
+                      {analytics.total || 0} total
+                    </span>
+                  </div>
+                  {analytics.timeSeries && analytics.timeSeries.length > 0 ? (
+                    <BarChart data={analytics.timeSeries} />
+                  ) : (
+                    <p className="py-10 text-center text-sm text-slate-400">
+                      Aucune donnée sur cette période.
+                    </p>
+                  )}
+                </div>
+
                 {/* Summary cards */}
                 <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                  <div className="rounded-xl bg-linear-to-br from-indigo-50 to-blue-50 p-4">
-                    <p className="text-xs font-medium text-indigo-600">
+                  <div className="rounded-2xl bg-linear-to-br from-indigo-500 to-blue-500 p-4 shadow-lg shadow-indigo-500/20">
+                    <p className="text-xs font-medium text-indigo-100">
                       Total Messages
                     </p>
-                    <p className="mt-1 text-3xl font-bold text-indigo-700">
+                    <p className="mt-1 text-3xl font-bold text-white">
                       {analytics.total || 0}
                     </p>
-                    <p className="mt-1 text-xs text-indigo-500">
+                    <p className="mt-1 text-xs text-indigo-100/80">
                       Received from webhooks
                     </p>
                   </div>
-                  <div className="rounded-xl bg-linear-to-br from-emerald-50 to-green-50 p-4">
-                    <p className="text-xs font-medium text-emerald-600">
+                  <div className="rounded-2xl bg-linear-to-br from-emerald-500 to-teal-500 p-4 shadow-lg shadow-emerald-500/20">
+                    <p className="text-xs font-medium text-emerald-100">
                       Success Rate
                     </p>
-                    <p className="mt-1 text-3xl font-bold text-emerald-700">
+                    <p className="mt-1 text-3xl font-bold text-white">
                       {analytics.successRate ?? 100}%
                     </p>
-                    <p className="mt-1 text-xs text-emerald-500">
+                    <p className="mt-1 text-xs text-emerald-100/80">
                       {analytics.completed || 0} completed ·{" "}
                       {analytics.failed || 0} failed
                     </p>
                   </div>
-                  <div className="rounded-xl bg-linear-to-br from-amber-50 to-yellow-50 p-4">
-                    <p className="text-xs font-medium text-amber-600">
+                  <div className="rounded-2xl bg-linear-to-br from-amber-500 to-orange-500 p-4 shadow-lg shadow-amber-500/20">
+                    <p className="text-xs font-medium text-amber-100">
                       Avg Response Time
                     </p>
-                    <p className="mt-1 text-3xl font-bold text-amber-700">
+                    <p className="mt-1 text-3xl font-bold text-white">
                       {analytics.avgResponseTime || "0"}s
                     </p>
-                    <p className="mt-1 text-xs text-amber-500">
+                    <p className="mt-1 text-xs text-amber-100/80">
                       Estimated from waiting time
                     </p>
                   </div>
-                  <div className="rounded-xl bg-linear-to-br from-purple-50 to-fuchsia-50 p-4">
-                    <p className="text-xs font-medium text-purple-600">
+                  <div className="rounded-2xl bg-linear-to-br from-purple-500 to-fuchsia-500 p-4 shadow-lg shadow-purple-500/20">
+                    <p className="text-xs font-medium text-purple-100">
                       Active Products
                     </p>
-                    <p className="mt-1 text-3xl font-bold text-purple-700">
+                    <p className="mt-1 text-3xl font-bold text-white">
                       {products.filter((p) => p.status !== "Inactive").length}
                     </p>
-                    <p className="mt-1 text-xs text-purple-500">
+                    <p className="mt-1 text-xs text-purple-100/80">
                       {products.length} total products
                     </p>
                   </div>
                 </div>
-
-                {/* Bar chart */}
-                {analytics.timeSeries && analytics.timeSeries.length > 0 && (
-                  <div className="mb-6 rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-                    <p className="mb-3 text-sm font-semibold text-slate-700">
-                      Messages over time
-                    </p>
-                    <div className="flex h-44 items-end gap-2">
-                      {analytics.timeSeries.map((point, i) => {
-                        const max = Math.max(
-                          ...analytics.timeSeries.map((p) => p.count),
-                          1,
-                        );
-                        const height = (point.count / max) * 100;
-                        return (
-                          <div
-                            key={i}
-                            className="group flex flex-1 flex-col items-center gap-1"
-                          >
-                            <span className="text-xs font-semibold text-slate-600 opacity-0 transition-opacity group-hover:opacity-100">
-                              {point.count}
-                            </span>
-                            <div
-                              className="w-full rounded-t-lg bg-linear-to-t from-indigo-600 to-purple-500 transition-all group-hover:from-indigo-500 group-hover:to-purple-400"
-                              style={{ height: `${Math.max(height, 4)}%` }}
-                            />
-                            <span className="text-[10px] text-slate-500">
-                              {point.label}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
                 {/* Per-product table */}
                 <div className="overflow-hidden rounded-xl border border-slate-200">
@@ -1104,51 +1372,35 @@ export default function DashboardPage() {
           <>
             {/* Stats cards */}
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                {
-                  label: "Total Products",
-                  value: totalProducts,
-                  icon: "📦",
-                  grad: "from-blue-500 to-indigo-500",
-                },
-                {
-                  label: "Webhook Calls",
-                  value: totalWebhookCalls,
-                  icon: "🔗",
-                  grad: "from-emerald-500 to-teal-500",
-                },
-                {
-                  label: "Test Calls",
-                  value: totalTestCalls,
-                  icon: "🧪",
-                  grad: "from-amber-500 to-orange-500",
-                },
-                {
-                  label: "Production Calls",
-                  value: totalProdCalls,
-                  icon: "🚀",
-                  grad: "from-purple-500 to-fuchsia-500",
-                },
-              ].map((card) => (
-                <div
-                  key={card.label}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-slate-500">
-                      {card.label}
-                    </p>
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br ${card.grad} text-lg text-white shadow-md`}
-                    >
-                      {card.icon}
-                    </div>
-                  </div>
-                  <p className="mt-2 text-3xl font-bold text-slate-900">
-                    {card.value}
-                  </p>
-                </div>
-              ))}
+              <StatCard
+                label="Total Products"
+                value={totalProducts}
+                icon="📦"
+                grad="from-blue-500 to-indigo-500"
+                sub={`${products.filter((p) => p.enabled).length} active`}
+                spark={analytics?.timeSeries?.map((p) => p.count)}
+              />
+              <StatCard
+                label="Webhook Calls"
+                value={totalWebhookCalls}
+                icon="🔗"
+                grad="from-emerald-500 to-teal-500"
+                spark={analytics?.timeSeries?.map((p) => p.count)}
+              />
+              <StatCard
+                label="Test Calls"
+                value={totalTestCalls}
+                icon="🧪"
+                grad="from-amber-500 to-orange-500"
+                spark={analytics?.timeSeries?.map((p) => p.count)}
+              />
+              <StatCard
+                label="Production Calls"
+                value={totalProdCalls}
+                icon="🚀"
+                grad="from-purple-500 to-fuchsia-500"
+                spark={analytics?.timeSeries?.map((p) => p.count)}
+              />
             </div>
 
             {/* Products header */}
