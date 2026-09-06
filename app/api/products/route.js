@@ -3,9 +3,14 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/database/database";
 import Product from "@/lib/models/product";
 import Message from "@/lib/models/message";
+import Setting from "@/lib/models/setting";
 import { revalidatePath } from "next/cache";
 import jwt from "jsonwebtoken";
 import { resolveWaitingTime } from "@/lib/services/waiting-time.service";
+
+// ✅ Daily limits (matching the webhook routes). Read from admin Settings.
+const DEFAULT_TEST_LIMIT = 25;
+const DEFAULT_PROD_LIMIT = 10000;
 
 // ============================================
 // ✅ GENERATE API KEY
@@ -31,25 +36,63 @@ export async function GET(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Read the daily test/prod limits from admin Settings (with defaults).
+    let testLimit = DEFAULT_TEST_LIMIT;
+    let prodLimit = DEFAULT_PROD_LIMIT;
+    try {
+      const settings = await Setting.find({}).lean();
+      settings.forEach((s) => {
+        if (s.key === "test_calls_per_day") {
+          const v = parseInt(s.value, 10);
+          if (Number.isFinite(v) && v > 0) testLimit = v;
+        }
+        if (s.key === "prod_calls_per_day") {
+          const v = parseInt(s.value, 10);
+          if (Number.isFinite(v) && v > 0) prodLimit = v;
+        }
+      });
+    } catch (err) {
+      console.error("⚠️ Failed to read daily limits:", err.message);
+    }
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const products = await Product.find({ user_id: decoded.userId }).sort({
       created_at: -1,
     });
 
-    // ✅ Count webhook calls (messages) per product, split by mode
+    // ✅ Count webhook calls (messages) per product, split by mode.
+    //    Also counts how many were used TODAY against the daily limits.
     const productsWithStats = await Promise.all(
       products.map(async (p) => {
-        const [totalCalls, testCalls, prodCalls] = await Promise.all([
-          Message.countDocuments({ product_id: p._id }),
-          Message.countDocuments({ product_id: p._id, mode: "test" }),
-          Message.countDocuments({ product_id: p._id, mode: "prod" }),
-        ]);
+        const [totalCalls, testCalls, prodCalls, testToday, prodToday] =
+          await Promise.all([
+            Message.countDocuments({ product_id: p._id }),
+            Message.countDocuments({ product_id: p._id, mode: "test" }),
+            Message.countDocuments({ product_id: p._id, mode: "prod" }),
+            Message.countDocuments({
+              product_id: p._id,
+              mode: "test",
+              created_at: { $gte: startOfDay },
+            }),
+            Message.countDocuments({
+              product_id: p._id,
+              mode: "prod",
+              created_at: { $gte: startOfDay },
+            }),
+          ]);
 
         return {
           ...p.toObject(),
           webhook_calls: totalCalls,
           webhook_calls_test: testCalls,
           webhook_calls_prod: prodCalls,
+          test_calls_today: testToday,
+          prod_calls_today: prodToday,
+          test_calls_limit: testLimit,
+          prod_calls_limit: prodLimit,
         };
       }),
     );
@@ -257,7 +300,7 @@ export async function POST(request) {
 }
 
 // ============================================
-// ✅ PATCH - Toggle product mode (test/prod)
+// ✅ PATCH - Toggle product mode (test/prod) OR webhook enabled/disabled
 // ============================================
 export async function PATCH(request) {
   try {
@@ -269,26 +312,38 @@ export async function PATCH(request) {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const { productId, mode } = await request.json();
+    const { productId, mode, enabled } = await request.json();
 
-    if (!productId || !mode) {
+    if (!productId) {
       return NextResponse.json(
-        { error: "productId and mode are required" },
+        { error: "productId is required" },
         { status: 400 },
       );
     }
 
-    if (!["test", "prod"].includes(mode)) {
-      return NextResponse.json(
-        { error: "mode must be 'test' or 'prod'" },
-        { status: 400 },
-      );
+    // Build the update — allow toggling mode and/or enabled.
+    const update = {};
+    if (mode !== undefined) {
+      if (!["test", "prod"].includes(mode)) {
+        return NextResponse.json(
+          { error: "mode must be 'test' or 'prod'" },
+          { status: 400 },
+        );
+      }
+      update.mode = mode;
+    }
+    if (enabled !== undefined) {
+      update.enabled = Boolean(enabled);
+    }
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
 
     // Ensure the product belongs to this user
     const product = await Product.findOneAndUpdate(
       { _id: productId, user_id: decoded.userId },
-      { mode },
+      update,
       { new: true },
     );
 
@@ -302,12 +357,13 @@ export async function PATCH(request) {
         id: product._id,
         name: product.name,
         mode: product.mode,
+        enabled: product.enabled,
       },
     });
   } catch (error) {
-    console.error("Error toggling product mode:", error);
+    console.error("Error toggling product:", error);
     return NextResponse.json(
-      { error: "Failed to toggle product mode" },
+      { error: "Failed to toggle product" },
       { status: 500 },
     );
   }

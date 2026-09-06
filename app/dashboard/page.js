@@ -73,6 +73,15 @@ export default function DashboardPage() {
   const [togglingId, setTogglingId] = useState(null);
   const [showUserInfo, setShowUserInfo] = useState(false);
 
+  // Set-password state (profile modal)
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [pwMsg, setPwMsg] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  // Tracks whether the user has just set a password in this session.
+  const [localHasPassword, setLocalHasPassword] = useState(false);
+
   // Edit / Delete / Messages state
   const [editingProduct, setEditingProduct] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -108,6 +117,14 @@ export default function DashboardPage() {
   const [now, setNow] = useState(0);
 
   const getToken = () => localStorage.getItem("accessToken");
+
+  // Show a success message that auto-dismisses after 3 seconds.
+  const messageTimer = useRef(null);
+  const showMessage = useCallback((msg) => {
+    setMessage(msg);
+    if (messageTimer.current) clearTimeout(messageTimer.current);
+    messageTimer.current = setTimeout(() => setMessage(""), 3000);
+  }, []);
 
   // Push a notification toast (auto-dismiss after 6s)
   const pushNotification = useCallback((msg) => {
@@ -184,6 +201,13 @@ export default function DashboardPage() {
     setNow(Date.now()); // set immediately on mount
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // ✅ Clear the auto-dismiss timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (messageTimer.current) clearTimeout(messageTimer.current);
+    };
   }, []);
 
   // Fetch available webhook models
@@ -296,7 +320,7 @@ export default function DashboardPage() {
     const result = await createProduct(formData);
 
     if (result.success) {
-      setMessage("✅ Product created successfully!");
+      showMessage("✅ Product created successfully!");
       setShowCreateForm(false);
       fetchProducts();
     } else {
@@ -313,6 +337,51 @@ export default function DashboardPage() {
       setTimeout(() => setCopiedId(null), 2000);
     } catch (err) {
       setError("Failed to copy");
+    }
+  };
+
+  // Set / change password from the profile modal.
+  // Google-only accounts can add a password here (entered twice to confirm).
+  const handleSetPassword = async (e) => {
+    e.preventDefault();
+    setPwMsg("");
+    setPwError("");
+
+    if (pw1.length < 10 || !/[A-Z]/.test(pw1) || !/[0-9]/.test(pw1)) {
+      setPwError(
+        "Le mot de passe doit contenir au moins 10 caractères, une majuscule et un chiffre.",
+      );
+      return;
+    }
+    if (pw1 !== pw2) {
+      setPwError("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+
+    setPwSaving(true);
+    try {
+      const res = await fetch("/api/auth/set-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ password: pw1 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPwMsg("Mot de passe enregistré avec succès.");
+        setPw1("");
+        setPw2("");
+        // ✅ Mark locally so logout is allowed right away.
+        setLocalHasPassword(true);
+      } else {
+        setPwError(data.message || "Échec de l'enregistrement.");
+      }
+    } catch {
+      setPwError("Une erreur est survenue. Veuillez réessayer.");
+    } finally {
+      setPwSaving(false);
     }
   };
 
@@ -343,6 +412,39 @@ export default function DashboardPage() {
     }
   };
 
+  // Toggle webhook on/off
+  const toggleEnabled = async (productId, currentEnabled) => {
+    setTogglingId(productId);
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch("/api/products", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({
+          productId,
+          enabled: !currentEnabled,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(
+          data.product.enabled ? "✅ Webhook enabled" : "⏸️ Webhook disabled",
+        );
+        fetchProducts();
+      } else {
+        setError(data.error || "Failed to toggle webhook");
+      }
+    } catch (err) {
+      setError("Failed to toggle webhook");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   // Edit product
   async function handleEdit(formData) {
     setIsEditing(true);
@@ -354,7 +456,7 @@ export default function DashboardPage() {
     }
     const result = await updateProduct(editingProduct._id, formData);
     if (result.success) {
-      setMessage("✅ Product updated successfully!");
+      showMessage("✅ Product updated successfully!");
       setEditingProduct(null);
       fetchProducts();
     } else {
@@ -369,7 +471,7 @@ export default function DashboardPage() {
     setError("");
     const result = await deleteProduct(deletingProduct._id);
     if (result.success) {
-      setMessage("🗑️ Product deleted successfully!");
+      showMessage("🗑️ Product deleted successfully!");
       setDeletingProduct(null);
       fetchProducts();
     } else {
@@ -417,7 +519,7 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage("🧪 Test message sent successfully!");
+        showMessage("🧪 Test message sent successfully!");
       } else {
         setError(data.error || "Failed to send test message");
       }
@@ -430,6 +532,16 @@ export default function DashboardPage() {
 
   // Logout
   const handleLogout = () => {
+    // 🔒 Never force a password/banner on Google accounts that still need
+    //    to set one — block logout until the user has added a password.
+    if (user && user.hasPassword === false && !localHasPassword) {
+      // Don't log out. Open the profile modal so they can set a password.
+      setShowUserInfo(true);
+      setPwMsg(
+        "Vous devez d'abord définir un mot de passe avant de pouvoir vous déconnecter.",
+      );
+      return;
+    }
     localStorage.removeItem("accessToken");
     router.push("/login");
   };
@@ -528,6 +640,21 @@ export default function DashboardPage() {
                 {user.name}
               </span>
             </div>
+            {user.verifyToken && (
+              <div className="hidden items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 lg:flex">
+                <span className="text-xs">🔑</span>
+                <code className="max-w-30 truncate text-xs font-semibold text-slate-600">
+                  {user.verifyToken}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(user.verifyToken, "verify")}
+                  className="rounded px-1 text-xs text-slate-400 transition-colors hover:text-slate-700"
+                  title="Copy verify token"
+                >
+                  {copiedId === "verify" ? "✅" : "📋"}
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setShowUserInfo(true)}
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
@@ -545,25 +672,6 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        {/* ===== Compact Webhook Verify Token banner (top) ===== */}
-        {user.verifyToken && (
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <div className="flex items-center gap-2 text-sm">
-              <span>🔑</span>
-              <span className="font-semibold text-slate-800">Verify Token</span>
-              <code className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                {user.verifyToken}
-              </code>
-            </div>
-            <button
-              onClick={() => copyToClipboard(user.verifyToken, "verify")}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
-            >
-              {copiedId === "verify" ? "✅ Copied" : "📋 Copy"}
-            </button>
-          </div>
-        )}
-
         {/* ===== Live Message Notifications Panel (right side) ===== */}
         {notifPanelOpen && (
           <div className="fixed right-4 top-20 z-50 flex max-h-[calc(100vh-6rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10">
@@ -1300,11 +1408,42 @@ export default function DashboardPage() {
                         </div>
                         {/* Mode toggle */}
                         <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-slate-500">
+                              Webhook
+                            </span>
+                            <button
+                              onClick={() =>
+                                toggleEnabled(
+                                  product._id,
+                                  product.enabled !== false,
+                                )
+                              }
+                              disabled={togglingId === product._id}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                product.enabled !== false
+                                  ? "bg-indigo-500"
+                                  : "bg-slate-300"
+                              } disabled:opacity-50`}
+                              aria-label="Toggle webhook"
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                  product.enabled !== false
+                                    ? "translate-x-6"
+                                    : "translate-x-1"
+                                }`}
+                              />
+                            </button>
+                          </div>
                           <button
                             onClick={() =>
                               toggleMode(product._id, product.mode)
                             }
-                            disabled={togglingId === product._id}
+                            disabled={
+                              togglingId === product._id ||
+                              product.enabled === false
+                            }
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                               isProd ? "bg-emerald-500" : "bg-amber-500"
                             } disabled:opacity-50`}
@@ -1325,9 +1464,15 @@ export default function DashboardPage() {
                           >
                             {isProd ? "🚀 Production" : "🧪 Test"}
                           </span>
+                          {product.enabled === false && (
+                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                              ⏸️ Webhook Off
+                            </span>
+                          )}
                           {!isProd && (
                             <span className="text-[10px] text-slate-400">
-                              Limited to 5/day
+                              Test limit {product.test_calls_today || 0}/
+                              {product.test_calls_limit || 25} today
                             </span>
                           )}
                         </div>
@@ -1408,27 +1553,78 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Call stats */}
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 gap-3">
+                          <div className="rounded-lg bg-amber-50 p-3">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-medium text-amber-700">
+                                🧪 Test Messages
+                              </p>
+                              <p className="text-xs font-semibold text-amber-800">
+                                {product.test_calls_today || 0} /{" "}
+                                {product.test_calls_limit || 25} today
+                              </p>
+                            </div>
+                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-amber-200/60">
+                              <div
+                                className={`h-full rounded-full ${
+                                  (product.test_calls_today || 0) >=
+                                  (product.test_calls_limit || 25)
+                                    ? "bg-red-500"
+                                    : "bg-amber-500"
+                                }`}
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    ((product.test_calls_today || 0) /
+                                      (product.test_calls_limit || 25)) *
+                                      100,
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                            <p className="mt-1 text-[11px] text-amber-600">
+                              {product.webhook_calls_test || 0} total test calls
+                            </p>
+                          </div>
+                          <div className="rounded-lg bg-emerald-50 p-3">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-medium text-emerald-700">
+                                🚀 Production Messages
+                              </p>
+                              <p className="text-xs font-semibold text-emerald-800">
+                                {product.prod_calls_today || 0} /{" "}
+                                {product.prod_calls_limit || 10000} today
+                              </p>
+                            </div>
+                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-emerald-200/60">
+                              <div
+                                className={`h-full rounded-full ${
+                                  (product.prod_calls_today || 0) >=
+                                  (product.prod_calls_limit || 10000)
+                                    ? "bg-red-500"
+                                    : "bg-emerald-500"
+                                }`}
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    ((product.prod_calls_today || 0) /
+                                      (product.prod_calls_limit || 10000)) *
+                                      100,
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                            <p className="mt-1 text-[11px] text-emerald-600">
+                              {product.webhook_calls_prod || 0} total production
+                              calls
+                            </p>
+                          </div>
                           <div className="rounded-lg bg-slate-50 p-3 text-center">
                             <p className="text-lg font-bold text-slate-900">
                               {product.webhook_calls || 0}
                             </p>
                             <p className="text-xs text-slate-500">
-                              Total Calls
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-amber-50 p-3 text-center">
-                            <p className="text-lg font-bold text-amber-700">
-                              {product.webhook_calls_test || 0}
-                            </p>
-                            <p className="text-xs text-amber-600">Test</p>
-                          </div>
-                          <div className="rounded-lg bg-emerald-50 p-3 text-center">
-                            <p className="text-lg font-bold text-emerald-700">
-                              {product.webhook_calls_prod || 0}
-                            </p>
-                            <p className="text-xs text-emerald-600">
-                              Production
+                              Total Calls (all time)
                             </p>
                           </div>
                         </div>
@@ -1584,6 +1780,67 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
+
+              {/* Set / Change Password */}
+              <form
+                onSubmit={handleSetPassword}
+                className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4"
+              >
+                <p className="text-xs font-medium text-indigo-600">
+                  🔒 Définir / Modifier le mot de passe
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Ajoutez un mot de passe pour vous connecter par email en plus
+                  de Google.
+                </p>
+
+                {pwMsg && (
+                  <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-600">
+                    {pwMsg}
+                  </p>
+                )}
+                {pwError && (
+                  <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                    {pwError}
+                  </p>
+                )}
+
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">
+                      Nouveau mot de passe
+                    </label>
+                    <input
+                      type="password"
+                      value={pw1}
+                      onChange={(e) => setPw1(e.target.value)}
+                      placeholder="Au moins 10 caractères"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">
+                      Confirmer le mot de passe
+                    </label>
+                    <input
+                      type="password"
+                      value={pw2}
+                      onChange={(e) => setPw2(e.target.value)}
+                      placeholder="Confirmez le mot de passe"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={pwSaving}
+                    className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {pwSaving
+                      ? "Enregistrement..."
+                      : "Enregistrer le mot de passe"}
+                  </button>
+                </div>
+              </form>
             </div>
 
             {/* Footer */}

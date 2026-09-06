@@ -1,73 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Input from "@/components/input";
-import Button from "@/components/button";
 
 export default function RegisterPage() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  const validateEmail = (value) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim());
-  };
-
-  const validatePassword = (value) => {
-    return value.length >= 10 && /[A-Z]/.test(value) && /[0-9]/.test(value);
-  };
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-
-    // Validate before submit
-    if (!name.trim()) {
-      setError("Veuillez saisir votre nom complet.");
-      return;
-    }
-    if (!validateEmail(email)) {
-      setError("Veuillez saisir une adresse email valide.");
-      return;
-    }
-    if (!validatePassword(password)) {
-      setError(
-        "Le mot de passe doit contenir au moins 10 caractères, avec une lettre majuscule et un chiffre.",
-      );
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setSuccess("Inscription réussie ! Redirection vers la connexion...");
-        setTimeout(() => {
-          router.push("/login");
-        }, 2000);
-      } else {
-        setError(data.message || "Échec de l'inscription");
-      }
-    } catch (error) {
-      setError("Une erreur est survenue. Veuillez réessayer.");
-    } finally {
-      setLoading(false);
-    }
+  const handleGoogleSignup = () => {
+    const redirectTo =
+      localStorage.getItem("redirectAfterLogin") || "/dashboard";
+    localStorage.removeItem("redirectAfterLogin");
+    window.location.href = `/api/auth/google?redirect=${encodeURIComponent(redirectTo)}`;
   };
 
   return (
@@ -101,47 +41,45 @@ export default function RegisterPage() {
             <span style={styles.badge}>📝</span>
             <h1 style={styles.title}>Créer votre compte</h1>
             <p style={styles.subtitle}>
-              Commencez gratuitement en quelques secondes.
+              Inscrivez-vous gratuitement avec votre compte Google.
             </p>
           </div>
 
-          {error && <div style={styles.error}>{error}</div>}
-          {success && <div style={styles.success}>{success}</div>}
+          <button
+            type="button"
+            onClick={handleGoogleSignup}
+            style={styles.googleBtn}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 48 48"
+              style={styles.googleIcon}
+            >
+              <path
+                fill="#FFC107"
+                d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
+              />
+              <path
+                fill="#FF3D00"
+                d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
+              />
+              <path
+                fill="#4CAF50"
+                d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
+              />
+              <path
+                fill="#1976D2"
+                d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
+              />
+            </svg>
+            S&apos;inscrire avec Google
+          </button>
 
-          <form onSubmit={handleRegister} style={styles.form}>
-            <Input
-              label="Nom complet"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Votre nom"
-            />
-
-            <Input
-              label="Adresse email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="vous@exemple.com"
-            />
-
-            <Input
-              label="Mot de passe"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Au moins 10 caractères"
-            />
-
-            <p style={styles.hint}>
-              Le mot de passe doit contenir au moins 10 caractères, inclure une
-              majuscule et un chiffre.
-            </p>
-
-            <Button type="submit" loading={loading} fullWidth color="blue">
-              Créer mon compte
-            </Button>
-          </form>
+          <p style={styles.note}>
+            Après l&apos;inscription, vous pourrez définir un mot de passe dans
+            votre profil.
+          </p>
 
           <p style={styles.footer}>
             Déjà un compte ?{" "}
@@ -290,34 +228,34 @@ const styles = {
     color: "#9ca3af",
     fontSize: "14px",
   },
-  error: {
-    background: "rgba(248,113,113,0.12)",
-    border: "1px solid rgba(248,113,113,0.3)",
-    color: "#fca5a5",
-    padding: "12px 14px",
-    borderRadius: "10px",
-    fontSize: "14px",
-    marginBottom: "18px",
-  },
-  success: {
-    background: "rgba(52,211,153,0.12)",
-    border: "1px solid rgba(52,211,153,0.3)",
-    color: "#6ee7b7",
-    padding: "12px 14px",
-    borderRadius: "10px",
-    fontSize: "14px",
-    marginBottom: "18px",
-  },
-  form: {
+  googleBtn: {
     display: "flex",
-    flexDirection: "column",
-    gap: "18px",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    width: "100%",
+    padding: "13px 16px",
+    borderRadius: "10px",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: "15px",
+    fontWeight: "600",
+    cursor: "pointer",
+    border: "1px solid rgba(255,255,255,0.12)",
+    transition: "background 0.2s ease",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
+    marginTop: "6px",
   },
-  hint: {
-    marginTop: "-8px",
-    fontSize: "12px",
+  googleIcon: {
+    flexShrink: 0,
+  },
+  note: {
+    marginTop: "18px",
+    textAlign: "center",
     color: "#6b7280",
-    lineHeight: 1.5,
+    fontSize: "13px",
+    lineHeight: 1.6,
+    padding: "0 8px",
   },
   footer: {
     textAlign: "center",

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Input from "@/components/input";
 import Button from "@/components/button";
@@ -12,9 +12,32 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ✅ Handle the Google OAuth callback: if a google_token is present,
+  //    store it and redirect to the dashboard.
+  useEffect(() => {
+    const googleToken = searchParams?.get("google_token");
+    const googleError = searchParams?.get("error");
+    const redirect = searchParams?.get("redirect");
+
+    if (googleToken) {
+      localStorage.setItem("accessToken", googleToken);
+      router.push(redirect || "/dashboard");
+    } else if (googleError) {
+      setError("La connexion Google a échoué. Veuillez réessayer.");
+    }
+  }, [searchParams, router]);
 
   const validateEmail = (value) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim());
+  };
+
+  const handleGoogleLogin = () => {
+    const redirectTo =
+      localStorage.getItem("redirectAfterLogin") || "/dashboard";
+    localStorage.removeItem("redirectAfterLogin");
+    window.location.href = `/api/auth/google?redirect=${encodeURIComponent(redirectTo)}`;
   };
 
   const handleLogin = async (e) => {
@@ -119,6 +142,43 @@ export default function LoginPage() {
               Se connecter
             </Button>
           </form>
+
+          <div style={styles.divider}>
+            <span style={styles.dividerLine} />
+            <span style={styles.dividerText}>ou</span>
+            <span style={styles.dividerLine} />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            style={styles.googleBtn}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 48 48"
+              style={styles.googleIcon}
+            >
+              <path
+                fill="#FFC107"
+                d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
+              />
+              <path
+                fill="#FF3D00"
+                d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
+              />
+              <path
+                fill="#4CAF50"
+                d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
+              />
+              <path
+                fill="#1976D2"
+                d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
+              />
+            </svg>
+            Se connecter avec Google
+          </button>
 
           <p style={styles.footer}>
             Pas encore de compte ?{" "}
@@ -285,6 +345,41 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "18px",
+  },
+  divider: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    margin: "22px 0 18px",
+  },
+  dividerLine: {
+    flex: 1,
+    height: "1px",
+    background: "rgba(255,255,255,0.08)",
+  },
+  dividerText: {
+    color: "#6b7280",
+    fontSize: "13px",
+  },
+  googleBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    width: "100%",
+    padding: "12px 16px",
+    borderRadius: "10px",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: "14px",
+    fontWeight: "600",
+    cursor: "pointer",
+    border: "1px solid rgba(255,255,255,0.12)",
+    transition: "background 0.2s ease",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.2)",
+  },
+  googleIcon: {
+    flexShrink: 0,
   },
   footer: {
     textAlign: "center",

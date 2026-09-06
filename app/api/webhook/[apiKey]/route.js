@@ -179,6 +179,27 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
     }
 
+    // ✅ If this product's webhook is disabled, reject the message.
+    if (product.enabled === false) {
+      return NextResponse.json(
+        { error: "Webhook is disabled for this product" },
+        { status: 403 },
+      );
+    }
+
+    // ✅ PRODUCTION webhook: only works when the product is in PROD mode.
+    //    If the product is in TEST mode, reject — use the TEST webhook URL
+    //    instead. This keeps test and production strictly separate.
+    if (product.mode !== "prod") {
+      return NextResponse.json(
+        {
+          error:
+            "This product is in TEST mode. Use the TEST webhook URL (/api/webhook/test/{apiKey}) instead.",
+        },
+        { status: 403 },
+      );
+    }
+
     // ============================================
     // ✅ 2. Get the product owner
     // ============================================

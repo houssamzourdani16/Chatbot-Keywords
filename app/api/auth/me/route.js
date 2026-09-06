@@ -53,9 +53,7 @@ export async function GET(request) {
       }
     }
 
-    const user = await User.findById(decoded.userId).select(
-      "-password -refreshToken",
-    );
+    const user = await User.findById(decoded.userId).select("-refreshToken");
 
     if (!user) {
       return NextResponse.json({ isAuthenticated: false }, { status: 401 });
@@ -63,6 +61,22 @@ export async function GET(request) {
 
     // ✅ Backfill/ensure a per-user verify token exists
     await ensureVerifyToken(user);
+
+    // ✅ Determine whether the user has a REAL (usable) password.
+    //    Google-only accounts get a `google_...` placeholder hash, which is
+    //    NOT a valid login password. A bcrypt hash always starts with `$2`.
+    //    This is derived from the actual DB value, so it's correct even for
+    //    legacy users that were created before the `hasPassword` field.
+    const hasRealPassword =
+      typeof user.password === "string" &&
+      (user.password.startsWith("$2") ||
+        (user.hasPassword === true && !user.password.startsWith("google_")));
+
+    // Backfill the flag for this user so future reads are fast.
+    if (user.hasPassword !== hasRealPassword) {
+      user.hasPassword = hasRealPassword;
+      await user.save();
+    }
 
     return NextResponse.json({
       isAuthenticated: true,
@@ -74,6 +88,7 @@ export async function GET(request) {
         plan: user.plan,
         blacklisted: user.blacklisted,
         verifyToken: user.verifyToken,
+        hasPassword: hasRealPassword,
         createdAt: user.createdAt,
       },
     });

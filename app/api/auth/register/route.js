@@ -46,6 +46,7 @@ export async function POST(request) {
       email,
       password: hashedPassword,
       verifyToken: generateVerifyToken(),
+      hasPassword: true,
     });
 
     return NextResponse.json(
