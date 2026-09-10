@@ -14,6 +14,11 @@ export default function AdminSidebar({ user }) {
     { href: "/admin/webhooks", label: "🔗 Webhooks", icon: "🔗" },
     { href: "/admin/keywords", label: "🔑 Keywords", icon: "🔑" },
     { href: "/admin/google-sheets", label: "📊 Sheets Config", icon: "📊" },
+    {
+      href: "/admin/conversations-sheet",
+      label: "💬 Conversations Sheets",
+      icon: "💬",
+    },
     { href: "/admin/settings", label: "⚙️ Settings", icon: "⚙️" },
   ];
 

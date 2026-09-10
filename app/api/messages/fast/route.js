@@ -51,11 +51,14 @@ export async function GET(request) {
 
     // ✅ Optimized query: Only fetch essential fields, no enrichment
     // This is the key to speed: .select() + .lean()
+    // NOTE: detected_keywords + keyword_data ARE included because they are
+    //       stored on the message document (no re-detection / no Google
+    //       Sheets fetch needed) — this lets the UI show keywords instantly.
     const [messages, total] = await Promise.all([
       Message.find(messageQuery)
         .select(
-          "_id batch_id sender_id product_id status created_at message waiting_time mode",
-        ) // ✅ Only essential fields
+          "_id batch_id sender_id product_id status created_at message waiting_time mode detected_keywords keyword_data",
+        ) // ✅ Essential fields + stored keyword data
         .sort({ created_at: -1 })
         .skip(skip)
         .limit(limit)
@@ -101,6 +104,10 @@ export async function GET(request) {
         waiting_time: m.waiting_time || 7,
         message: m.message || "",
         created_at: m.created_at,
+        // ✅ Include the STORED keyword data (already on the document).
+        //    No re-detection or Google Sheets fetch — just pass through.
+        detected_keywords: m.detected_keywords || [],
+        keyword_data: m.keyword_data || {},
       };
     });
 

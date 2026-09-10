@@ -9,8 +9,7 @@ import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
 
-// ✅ No timers. The batch is processed directly and awaited within this
-//    request, so it reliably reaches n8n without relying on setTimeout.
+// ✅ Messages are saved to batches and processed automatically (sent to n8n).
 export const maxDuration = 60;
 
 // ✅ Read the daily TEST-call limit from the admin Settings.
@@ -237,7 +236,25 @@ export async function POST(request, { params }) {
       `💾 Test message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}`,
     );
 
-    // ✅ Process the batch.
+    // ============================================
+    // ✅ INCREMENT WEBHOOK CALL COUNTERS
+    //    Track how many times this product's webhook was called.
+    //    - webhook_calls:      total (test + prod)
+    //    - webhook_calls_test: test calls
+    //    Non-fatal: if the increment fails, the message still processes.
+    // ============================================
+    try {
+      await Product.findByIdAndUpdate(product._id, {
+        $inc: { webhook_calls: 1, webhook_calls_test: 1 },
+      });
+    } catch (counterError) {
+      console.error(
+        "⚠️ Failed to increment test webhook counter:",
+        counterError.message,
+      );
+    }
+
+    // ✅ Process the batch (send to n8n).
     //    - If wait time ENABLED: do NOT force — the batch stays open and
     //      the scheduler joins later messages from the same sender.
     //    - If wait time DISABLED (0s): process immediately.
@@ -245,7 +262,7 @@ export async function POST(request, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: "✅ Test webhook received successfully",
+      message: "✅ Test webhook received and sent to n8n",
       message_id: savedMessage._id,
       batch_id: batch._id,
       mode: "test",

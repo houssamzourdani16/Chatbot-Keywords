@@ -63,32 +63,31 @@ export async function GET(request) {
       created_at: -1,
     });
 
-    // ✅ Count webhook calls (messages) per product, split by mode.
+    // ✅ Use the product's PERSISTENT webhook call counters (incremented on
+    //    every webhook call) as the source of truth for lifetime stats.
     //    Also counts how many were used TODAY against the daily limits.
     const productsWithStats = await Promise.all(
       products.map(async (p) => {
-        const [totalCalls, testCalls, prodCalls, testToday, prodToday] =
-          await Promise.all([
-            Message.countDocuments({ product_id: p._id }),
-            Message.countDocuments({ product_id: p._id, mode: "test" }),
-            Message.countDocuments({ product_id: p._id, mode: "prod" }),
-            Message.countDocuments({
-              product_id: p._id,
-              mode: "test",
-              created_at: { $gte: startOfDay },
-            }),
-            Message.countDocuments({
-              product_id: p._id,
-              mode: "prod",
-              created_at: { $gte: startOfDay },
-            }),
-          ]);
+        const [testToday, prodToday] = await Promise.all([
+          Message.countDocuments({
+            product_id: p._id,
+            mode: "test",
+            created_at: { $gte: startOfDay },
+          }),
+          Message.countDocuments({
+            product_id: p._id,
+            mode: "prod",
+            created_at: { $gte: startOfDay },
+          }),
+        ]);
 
         return {
           ...p.toObject(),
-          webhook_calls: totalCalls,
-          webhook_calls_test: testCalls,
-          webhook_calls_prod: prodCalls,
+          // ✅ Persistent counters stored on the product (incremented in the
+          //    webhook routes). Fall back to 0 if not yet set.
+          webhook_calls: p.webhook_calls || 0,
+          webhook_calls_test: p.webhook_calls_test || 0,
+          webhook_calls_prod: p.webhook_calls_prod || 0,
           test_calls_today: testToday,
           prod_calls_today: prodToday,
           test_calls_limit: testLimit,

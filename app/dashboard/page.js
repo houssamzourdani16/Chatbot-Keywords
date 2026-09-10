@@ -1,4 +1,9 @@
 // app/dashboard/page.js
+// ============================================================
+// 🖥️  PRODUCTION-READY TRADING-TERMINAL DASHBOARD
+//     Inspired by Bloomberg Terminal / TradingView / thinkorswim
+//     Multi-pane, data-dense, keyboard-first, real-time.
+// ============================================================
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -10,57 +15,32 @@ import {
   deleteProduct,
 } from "@/lib/actions/product-actions";
 
-const STATUS_COLORS = {
-  received: "bg-blue-100 text-blue-700",
-  processing: "bg-yellow-100 text-yellow-700",
-  completed: "bg-green-100 text-green-700",
-  failed: "bg-red-100 text-red-700",
-};
-
-const MODE_COLORS = {
-  test: "bg-purple-100 text-purple-700",
-  prod: "bg-indigo-100 text-indigo-700",
-};
-
-// Compute the seconds remaining until a batch's debounce timer expires.
-function secondsUntil(expiresAt, now) {
-  if (!expiresAt) return null;
-  const diff = new Date(expiresAt).getTime() - now;
-  return Math.ceil(diff / 1000);
+// ============================================================
+// ⏱️  HELPERS
+// ============================================================
+// Format a number with thousands separators (terminal style).
+function fmt(n) {
+  if (n === null || n === undefined) return "0";
+  return Number(n).toLocaleString("en-US");
 }
 
-// ⏳ Live countdown badge (same as the messages page).
-function LiveCountdownBadge({ expiresAt, waitingTime, now }) {
-  const secs = secondsUntil(expiresAt, now);
-  if (secs === null) {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        ⏱️ {waitingTime}s
-      </span>
-    );
+// Compact time (HH:MM:SS) for the ticker.
+function clockTime(ts) {
+  try {
+    return new Date(ts).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return "--:--:--";
   }
-  if (secs <= 0) {
-    return (
-      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
-        ⏱️ 0s → processing
-      </span>
-    );
-  }
-  const urgent = secs <= 3;
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
-        urgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-      }`}
-    >
-      <span className="inline-block animate-pulse">⏳</span> {secs}s
-    </span>
-  );
 }
 
-// ============================================
-// 🎨 Modern SVG chart components (no deps)
-// ============================================
+// ============================================================
+// 📊 SVG CHART COMPONENTS (zero dependencies)
+// ============================================================
 
 // Animated SVG bar chart with rounded bars, hover tooltip and gradient.
 function BarChart({ data, height = 200 }) {
@@ -86,7 +66,7 @@ function BarChart({ data, height = 200 }) {
             x2={chartW}
             y1={padT + innerH * (1 - f)}
             y2={padT + innerH * (1 - f)}
-            stroke="#e2e8f0"
+            stroke="#1f2937"
             strokeWidth="1"
             strokeDasharray={f === 1 ? "" : "4 4"}
           />
@@ -136,12 +116,12 @@ function BarChart({ data, height = 200 }) {
         })}
         <defs>
           <linearGradient id="barGrad0" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#6366f1" />
-            <stop offset="100%" stopColor="#8b5cf6" />
+            <stop offset="0%" stopColor="#10b981" />
+            <stop offset="100%" stopColor="#059669" />
           </linearGradient>
           <linearGradient id="barGrad1" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#06b6d4" />
-            <stop offset="100%" stopColor="#3b82f6" />
+            <stop offset="0%" stopColor="#34d399" />
+            <stop offset="100%" stopColor="#10b981" />
           </linearGradient>
         </defs>
       </svg>
@@ -149,56 +129,17 @@ function BarChart({ data, height = 200 }) {
   );
 }
 
-// Animated SVG donut chart (rings stroke-dasharray).
-function DonutChart({ percentage, color = "#6366f1" }) {
-  const r = 42;
-  const c = 2 * Math.PI * r;
-  const filled = (Math.min(Math.max(percentage, 0), 100) / 100) * c;
-
-  return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width="130" height="130" viewBox="0 0 100 100">
-        <circle
-          cx="50"
-          cy="50"
-          r={r}
-          fill="none"
-          stroke="#e2e8f0"
-          strokeWidth="11"
-        />
-        <circle
-          cx="50"
-          cy="50"
-          r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth="11"
-          strokeLinecap="round"
-          strokeDasharray={`${filled} ${c - filled}`}
-          transform="rotate(-90 50 50)"
-          style={{ transition: "stroke-dasharray 0.8s ease" }}
-        />
-      </svg>
-      <div className="absolute flex flex-col items-center justify-center">
-        <span className="text-xl font-extrabold text-slate-900">
-          {Math.round(percentage)}%
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// Compact stat card with gradient icon + trend.
+// Compact stat card with gradient icon + trend sparkline.
 function StatCard({ label, value, sub, icon, grad, spark }) {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-slate-900/10">
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-800 bg-[#0d1117] p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/40 hover:shadow-xl hover:shadow-emerald-500/10">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900">
+          <p className="text-sm font-medium text-slate-400">{label}</p>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-white">
             {value}
           </p>
-          {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
+          {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
         </div>
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-linear-to-br ${grad} text-xl text-white shadow-md transition-transform duration-300 group-hover:scale-110`}
@@ -260,10 +201,14 @@ function Sparkline({ data, color = "#6366f1" }) {
   );
 }
 
+// ============================================================
+// 🖥️  MAIN DASHBOARD
+// ============================================================
 export default function DashboardPage() {
   const { user, loading } = useProtectPage();
   const router = useRouter();
 
+  // ---- Core data state ----
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
@@ -275,16 +220,15 @@ export default function DashboardPage() {
   const [togglingId, setTogglingId] = useState(null);
   const [showUserInfo, setShowUserInfo] = useState(false);
 
-  // Set-password state (profile modal)
+  // ---- Set-password state (profile modal) ----
   const [pw1, setPw1] = useState("");
   const [pw2, setPw2] = useState("");
   const [pwMsg, setPwMsg] = useState("");
   const [pwError, setPwError] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
-  // Tracks whether the user has just set a password in this session.
   const [localHasPassword, setLocalHasPassword] = useState(false);
 
-  // Edit / Delete / Messages state
+  // ---- Edit / Delete / Messages state ----
   const [editingProduct, setEditingProduct] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState(null);
@@ -294,29 +238,27 @@ export default function DashboardPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [testingId, setTestingId] = useState(null);
 
-  // Navigation & Analytics state
+  // ---- Navigation & Analytics state ----
   const [activeView, setActiveView] = useState("dashboard");
   const [analyticsPeriod, setAnalyticsPeriod] = useState("week");
   const [analyticsProduct, setAnalyticsProduct] = useState("");
   const [analytics, setAnalytics] = useState(null);
-  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
-  // Webhook models (AI models) for product creation
+  // ---- Webhook models (AI models) for product creation ----
   const [webhooks, setWebhooks] = useState([]);
   const [selectedWebhook, setSelectedWebhook] = useState("");
 
-  // Keyword lists (Google Sheets) for product creation
+  // ---- Keyword lists (Google Sheets) for product creation ----
   const [keywordLists, setKeywordLists] = useState([]);
   const [selectedKeywordList, setSelectedKeywordList] = useState("");
 
-  // Live message notifications
-  const [notifications, setNotifications] = useState([]);
-  const [notifPanelOpen, setNotifPanelOpen] = useState(true);
-  const knownMessageIds = useRef(new Set());
+  // ---- Live countdown state: ticks every second ----
+  const [now, setNow] = useState(() => Date.now());
 
-  // ✅ Live countdown state: ticks every second so notification cards can
-  //    show the same countdown as the messages page.
-  const [now, setNow] = useState(0);
+  // ---- Terminal extras ----
+  const [showHelp, setShowHelp] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [lastSync, setLastSync] = useState(null);
 
   const getToken = () => localStorage.getItem("accessToken");
 
@@ -328,79 +270,8 @@ export default function DashboardPage() {
     messageTimer.current = setTimeout(() => setMessage(""), 3000);
   }, []);
 
-  // Push a notification toast (auto-dismiss after 6s)
-  const pushNotification = useCallback((msg) => {
-    const id = `${msg.id}-${Date.now()}`;
-    setNotifications((prev) => [...prev.slice(-4), { ...msg, notifId: id }]);
-    setTimeout(() => {
-      setNotifications((prev) => prev.filter((n) => n.notifId !== id));
-    }, 6000);
-  }, []);
-
-  // Dismiss a single notification
-  const dismissNotification = useCallback((notifId) => {
-    setNotifications((prev) => prev.filter((n) => n.notifId !== notifId));
-  }, []);
-
-  // ============================================
-  // ✅ LIVE MESSAGE NOTIFICATIONS
-  //    Polls /api/messages every few seconds.
-  //    When a NEW message appears in the DB, it
-  //    pops up as a toast notification.
-  // ============================================
-  const pollMessages = useCallback(async () => {
-    try {
-      const res = await fetch("/api/messages?limit=10", {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const data = await res.json();
-
-      if (data.connected === false) {
-        return;
-      }
-
-      if (data.success && Array.isArray(data.messages)) {
-        // Track the newest message id we've seen
-        const prev = knownMessageIds.current;
-        const next = new Set(prev);
-        let newestId = null;
-        let newestTime = 0;
-
-        data.messages.forEach((m) => {
-          const t = new Date(m.created_at).getTime();
-          if (t > newestTime) {
-            newestTime = t;
-            newestId = m.id;
-          }
-          next.add(m.id);
-        });
-
-        // Only notify for messages newer than what we already know
-        if (newestId && !prev.has(newestId)) {
-          const newest = data.messages.find((m) => m.id === newestId);
-          if (newest) {
-            pushNotification(newest);
-          }
-        }
-
-        knownMessageIds.current = next;
-      }
-    } catch {
-      // Network error — don't spam, just skip this poll cycle
-    }
-  }, [pushNotification]);
-
-  // Start polling when the user is logged in
+  // ✅ Tick `now` every second to drive the live countdown.
   useEffect(() => {
-    if (!user) return;
-    pollMessages(); // immediate first check
-    const interval = setInterval(pollMessages, 5000);
-    return () => clearInterval(interval);
-  }, [user, pollMessages]);
-
-  // ✅ Tick `now` every second to drive the live countdown on notifications.
-  useEffect(() => {
-    setNow(Date.now()); // set immediately on mount
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -420,7 +291,7 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (data.success) setWebhooks(data.webhooks);
-    } catch (err) {
+    } catch {
       // non-fatal
     }
   }, []);
@@ -433,7 +304,7 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (data.success) setKeywordLists(data.lists);
-    } catch (err) {
+    } catch {
       // non-fatal
     }
   }, []);
@@ -446,8 +317,10 @@ export default function DashboardPage() {
   }, [user, fetchWebhooks, fetchKeywordLists]);
 
   // Fetch products
-  const fetchProducts = useCallback(async () => {
-    setLoadingProducts(true);
+  // Fetch products. Pass silent=true for background polling so the
+  // loading spinner only shows on the initial load, not every refresh.
+  const fetchProducts = useCallback(async (silent = false) => {
+    if (!silent) setLoadingProducts(true);
     try {
       const token = getToken();
       const response = await fetch("/api/products", {
@@ -459,7 +332,7 @@ export default function DashboardPage() {
       } else {
         setError(data.error || "Failed to fetch products");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to fetch products");
     } finally {
       setLoadingProducts(false);
@@ -467,14 +340,11 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchProducts();
-    }
+    if (user) fetchProducts();
   }, [user, fetchProducts]);
 
   // Fetch analytics
   const fetchAnalytics = useCallback(async () => {
-    setLoadingAnalytics(true);
     setError("");
     try {
       const params = new URLSearchParams({ period: analyticsPeriod });
@@ -489,10 +359,8 @@ export default function DashboardPage() {
       } else {
         setError(data.error || "Failed to load analytics");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to load analytics");
-    } finally {
-      setLoadingAnalytics(false);
     }
   }, [analyticsPeriod, analyticsProduct]);
 
@@ -501,6 +369,83 @@ export default function DashboardPage() {
       fetchAnalytics();
     }
   }, [user, activeView, fetchAnalytics]);
+
+  // ============================================================
+  // 🔄 REAL-TIME DATA REFRESH (no page reload needed)
+  //     Polls products + analytics every 10s so the dashboard
+  //     always shows live data (webhook calls, today's counts,
+  //     success rate, trend chart) without refreshing the page.
+  // ============================================================
+  useEffect(() => {
+    if (!user) return;
+    const refresh = () => {
+      fetchProducts(true); // silent — no spinner flash on background refresh
+      if (activeView === "dashboard") fetchAnalytics();
+      setLastSync(new Date());
+    };
+    refresh(); // immediate first refresh
+    const interval = setInterval(refresh, 10000);
+    return () => clearInterval(interval);
+  }, [user, activeView, fetchProducts, fetchAnalytics]);
+
+  // ============================================================
+  // ⌨️  KEYBOARD SHORTCUTS (terminal-first)
+  //     1 → Dashboard   2 → Products   3 → Messages
+  //     n → New product  ? → Help       Esc → Close modals
+  //     r → Refresh data
+  // ============================================================
+  useEffect(() => {
+    if (!user) return;
+    const onKey = (e) => {
+      // Ignore when typing in an input/textarea/select
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (
+        tag === "input" ||
+        tag === "textarea" ||
+        tag === "select" ||
+        e.target.isContentEditable
+      ) {
+        return;
+      }
+      switch (e.key) {
+        case "1":
+          setActiveView("dashboard");
+          break;
+        case "2":
+          setActiveView("products");
+          break;
+        case "3":
+          router.push("/dashboard/messages");
+          break;
+        case "n":
+        case "N":
+          setWaitTimeEnabled(true);
+          setShowCreateForm(true);
+          break;
+        case "?":
+          setShowHelp((v) => !v);
+          break;
+        case "r":
+        case "R":
+          fetchProducts();
+          fetchAnalytics();
+          setLastSync(new Date());
+          break;
+        case "Escape":
+          setShowHelp(false);
+          setEditingProduct(null);
+          setDeletingProduct(null);
+          setViewingMessages(null);
+          setShowUserInfo(false);
+          setShowCreateForm(false);
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [user, router, fetchProducts, fetchAnalytics]);
 
   // Create product
   async function handleCreate(formData) {
@@ -537,13 +482,12 @@ export default function DashboardPage() {
       await navigator.clipboard.writeText(text);
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
-    } catch (err) {
+    } catch {
       setError("Failed to copy");
     }
   };
 
   // Set / change password from the profile modal.
-  // Google-only accounts can add a password here (entered twice to confirm).
   const handleSetPassword = async (e) => {
     e.preventDefault();
     setPwMsg("");
@@ -575,7 +519,6 @@ export default function DashboardPage() {
         setPwMsg("Mot de passe enregistré avec succès.");
         setPw1("");
         setPw2("");
-        // ✅ Mark locally so logout is allowed right away.
         setLocalHasPassword(true);
       } else {
         setPwError(data.message || "Échec de l'enregistrement.");
@@ -607,7 +550,7 @@ export default function DashboardPage() {
       } else {
         setError(data.error || "Failed to toggle mode");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to toggle mode");
     } finally {
       setTogglingId(null);
@@ -640,7 +583,7 @@ export default function DashboardPage() {
       } else {
         setError(data.error || "Failed to toggle webhook");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to toggle webhook");
     } finally {
       setTogglingId(null);
@@ -697,7 +640,7 @@ export default function DashboardPage() {
       } else {
         setError(data.error || "Failed to load messages");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to load messages");
     } finally {
       setLoadingMessages(false);
@@ -725,7 +668,7 @@ export default function DashboardPage() {
       } else {
         setError(data.error || "Failed to send test message");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to send test message");
     } finally {
       setTestingId(null);
@@ -734,10 +677,7 @@ export default function DashboardPage() {
 
   // Logout
   const handleLogout = () => {
-    // 🔒 Never force a password/banner on Google accounts that still need
-    //    to set one — block logout until the user has added a password.
     if (user && user.hasPassword === false && !localHasPassword) {
-      // Don't log out. Open the profile modal so they can set a password.
       setShowUserInfo(true);
       setPwMsg(
         "Vous devez d'abord définir un mot de passe avant de pouvoir vous déconnecter.",
@@ -750,16 +690,19 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0e14]">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
       </div>
     );
   }
 
   if (!user) return null;
 
-  // Stats
+  // ============================================================
+  // 📊 DERIVED STATS (at-a-glance summary)
+  // ============================================================
   const totalProducts = products.length;
+  const activeProducts = products.filter((p) => p.enabled !== false).length;
   const totalWebhookCalls = products.reduce(
     (sum, p) => sum + (p.webhook_calls || 0),
     0,
@@ -772,662 +715,353 @@ export default function DashboardPage() {
     (sum, p) => sum + (p.webhook_calls_prod || 0),
     0,
   );
+  const totalMessagesToday = products.reduce(
+    (sum, p) => sum + (p.test_calls_today || 0) + (p.prod_calls_today || 0),
+    0,
+  );
+
+  // Filter products by search query (terminal search bar)
+  const q = searchQuery.trim().toLowerCase();
+  const filteredProducts = q
+    ? products.filter(
+        (p) =>
+          (p.name || "").toLowerCase().includes(q) ||
+          (p.description || "").toLowerCase().includes(q) ||
+          (p.category || "").toLowerCase().includes(q) ||
+          (p.api_key || "").toLowerCase().includes(q),
+      )
+    : products;
 
   const navItems = [
-    { id: "dashboard", label: "Dashboard", icon: "📊" },
-    { id: "products", label: "Products", icon: "📦" },
+    { id: "dashboard", label: "Dashboard", icon: "📊", key: "1" },
+    { id: "products", label: "Products", icon: "📦", key: "2" },
     {
       id: "messages",
       label: "Messages",
       icon: "💬",
+      key: "3",
       href: "/dashboard/messages",
     },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* ===== Top Navbar (single compact line) ===== */}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-          {/* Logo */}
+    <div className="min-h-screen bg-[#0b0e14] text-slate-200">
+      {/* ============================================================
+          TOP COMMAND BAR (terminal-style single line)
+      ============================================================ */}
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#0d1117]/95 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between gap-3 px-4 sm:px-6">
+          {/* Logo / ticker symbol */}
           <div className="flex shrink-0 items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-linear-to-br from-indigo-600 to-purple-600 text-base text-white shadow-lg shadow-indigo-600/20">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-linear-to-br from-emerald-500 to-teal-500 text-base text-white shadow-lg shadow-emerald-500/20">
               📊
             </div>
             <div className="leading-tight">
-              <p className="text-sm font-bold text-slate-900">Dashboard</p>
-              <p className="text-[10px] text-slate-500">Control Center</p>
+              <p className="text-sm font-bold tracking-wide text-white">
+                CONTROL<span className="text-emerald-400">TERM</span>
+              </p>
+              <p className="text-[10px] font-mono text-slate-500">
+                {user.name}@{user.role}
+              </p>
             </div>
           </div>
 
-          {/* Nav tabs + right controls on one line */}
+          {/* Nav tabs */}
+          <nav className="hidden items-center gap-1 md:flex">
+            {navItems.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.href) router.push(tab.href);
+                  else setActiveView(tab.id);
+                }}
+                className={`relative whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeView === tab.id && !tab.href
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                }`}
+              >
+                <span className="mr-1">{tab.icon}</span>
+                {tab.label}
+                <kbd className="ml-1 rounded border border-slate-700 bg-slate-800/60 px-1 text-[9px] font-mono text-slate-500">
+                  {tab.key}
+                </kbd>
+              </button>
+            ))}
+          </nav>
+
+          {/* Right controls */}
           <div className="flex items-center gap-2">
-            {/* Nav tabs */}
-            <nav className="hidden items-center gap-1 md:flex">
-              {navItems.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    if (tab.href) {
-                      router.push(tab.href);
-                    } else {
-                      setActiveView(tab.id);
-                    }
-                  }}
-                  className={`relative whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    activeView === tab.id && !tab.href
-                      ? "bg-indigo-50 text-indigo-600"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                  }`}
-                >
-                  <span className="mr-1">{tab.icon}</span>
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
+            {/* Live clock */}
+            <div className="hidden font-mono text-xs text-emerald-400 lg:block">
+              {clockTime(now)}
+            </div>
 
             {(user.role === "admin" || user.role === "super_admin") && (
               <button
                 onClick={() => router.push("/admin")}
-                className="rounded-lg bg-linear-to-r from-purple-600 to-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-md shadow-purple-600/20 transition-all hover:shadow-lg hover:shadow-purple-600/30"
+                className="rounded-lg bg-linear-to-r from-purple-600 to-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-md shadow-purple-600/20 transition-all hover:shadow-lg"
               >
-                🛡️ <span className="hidden lg:inline">Admin Panel</span>
+                🛡️ <span className="hidden lg:inline">Admin</span>
               </button>
             )}
-            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-br from-indigo-500 to-purple-500 text-xs font-semibold text-white">
+
+            <button
+              onClick={() => setShowHelp(true)}
+              className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-sm text-slate-300 transition-colors hover:bg-slate-800"
+              title="Keyboard shortcuts (?)"
+            >
+              ⌨️ <span className="hidden lg:inline">Help</span>
+            </button>
+
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full border border-slate-700 bg-[#0d1117] py-1 pl-1 pr-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-br from-emerald-500 to-teal-500 text-xs font-semibold text-white">
                 {user.name?.charAt(0).toUpperCase()}
               </div>
-              <span className="hidden text-sm font-medium text-slate-700 md:block">
+              <span className="hidden text-sm font-medium text-slate-200 md:block">
                 {user.name}
               </span>
             </div>
-            {user.verifyToken && (
-              <div className="hidden items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 lg:flex">
-                <span className="text-xs">🔑</span>
-                <code className="max-w-30 truncate text-xs font-semibold text-slate-600">
-                  {user.verifyToken}
-                </code>
-                <button
-                  onClick={() => copyToClipboard(user.verifyToken, "verify")}
-                  className="rounded px-1 text-xs text-slate-400 transition-colors hover:text-slate-700"
-                  title="Copy verify token"
-                >
-                  {copiedId === "verify" ? "✅" : "📋"}
-                </button>
-              </div>
-            )}
+
             <button
               onClick={() => setShowUserInfo(true)}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800"
             >
-              👤 Info
+              👤
             </button>
             <button
               onClick={handleLogout}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+              className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800"
             >
-              Logout
+              ⏻
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-        {/* ===== Live Message Notifications Panel (right side) ===== */}
-        {notifPanelOpen && (
-          <div className="fixed right-4 top-20 z-50 flex max-h-[calc(100vh-6rem)] w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10">
-            {/* Panel header */}
-            <div className="flex items-center justify-between border-b border-slate-100 bg-linear-to-r from-indigo-600 to-purple-600 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                </span>
-                <p className="text-sm font-bold text-white">Live Messages</p>
-                {notifications.length > 0 && (
-                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-semibold text-white">
-                    {notifications.length}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setNotifications([])}
-                  className="rounded-md p-1 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
-                  aria-label="Clear all"
-                  title="Clear all"
-                >
-                  🗑️
-                </button>
-                <button
-                  onClick={() => setNotifPanelOpen(false)}
-                  className="rounded-md p-1 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
-                  aria-label="Close panel"
-                  title="Close panel"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Panel body */}
-            <div className="flex-1 overflow-y-auto">
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
-                  <div className="text-4xl">💬</div>
-                  <p className="mt-3 text-sm font-medium text-slate-600">
-                    No messages yet
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Incoming messages will appear here in real time.
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {notifications.map((n) => (
-                    <div
-                      key={n.notifId}
-                      className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-slate-50"
-                    >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm">
-                        💬
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        {/* Product name + countdown (same as messages page) */}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <p className="text-xs font-semibold text-slate-900">
-                            {n.product_name || "Message"}
-                          </p>
-                          {n.status === "received" ? (
-                            <LiveCountdownBadge
-                              expiresAt={n.batch_expires_at}
-                              waitingTime={n.waiting_time || 7}
-                              now={now}
-                            />
-                          ) : (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                              ⏱️ {n.waiting_time || 7}s
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Sender */}
-                        {n.sender_id && (
-                          <p className="mt-0.5 text-[11px] text-slate-400">
-                            Sender: {n.sender_id}
-                          </p>
-                        )}
-
-                        {/* Mode + status badges */}
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                              MODE_COLORS[n.mode] || MODE_COLORS.prod
-                            }`}
-                          >
-                            {n.mode}
-                          </span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                              STATUS_COLORS[n.status] || STATUS_COLORS.received
-                            }`}
-                          >
-                            {n.status}
-                          </span>
-                        </div>
-
-                        {/* Message text */}
-                        <p className="mt-1.5 rounded-md bg-slate-50 p-2 text-xs leading-relaxed text-slate-800">
-                          {n.message}
-                        </p>
-
-                        {/* Keywords found on the spreadsheet */}
-                        {n.detected_keywords &&
-                          n.detected_keywords.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {n.detected_keywords.map((kw) => (
-                                <span
-                                  key={kw}
-                                  className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
-                                >
-                                  {kw}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                        <p className="mt-1 text-[10px] text-slate-400">
-                          {new Date(n.created_at).toLocaleTimeString()}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => dismissNotification(n.notifId)}
-                        className="shrink-0 rounded-md p-1 text-slate-300 opacity-0 transition-all hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100"
-                        aria-label="Dismiss"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ===== Floating button to reopen notifications panel ===== */}
-        {!notifPanelOpen && (
-          <button
-            onClick={() => setNotifPanelOpen(true)}
-            className="fixed right-4 top-20 z-50 flex items-center gap-2 rounded-full bg-linear-to-r from-indigo-600 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 transition-all hover:shadow-xl"
-          >
-            💬 Live Messages
-            {notifications.length > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-bold text-indigo-600">
-                {notifications.length}
-              </span>
-            )}
-          </button>
-        )}
-
-        {/* ===== DB Connection Status ===== */}
-
-        {/* ===== Messages ===== */}
+      <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
+        {/* ===== Status / toast messages ===== */}
         {message && (
-          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+          <div className="mb-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-300">
             {message}
           </div>
         )}
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
             {error}
           </div>
         )}
 
-        {/* ===== HERO BANNER ===== */}
-        <section className="relative mb-8 overflow-hidden rounded-3xl bg-slate-900 p-8 text-white shadow-xl">
-          {/* Decorative glows */}
-          <div className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-purple-600/30 blur-3xl" />
-          <div className="pointer-events-none absolute -left-16 -bottom-24 h-72 w-72 rounded-full bg-indigo-600/30 blur-3xl" />
-          <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-indigo-600/20 via-transparent to-purple-600/20" />
+        {/* ============================================================
+            📊 AT-A-GLANCE SUMMARY TICKER (top row)
+        ============================================================ */}
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <StatCard
+            label="Products"
+            value={fmt(totalProducts)}
+            icon="📦"
+            grad="from-emerald-500 to-teal-600"
+            sub={`${activeProducts} active`}
+            spark={analytics?.timeSeries?.map((p) => p.count)}
+          />
+          <StatCard
+            label="Total Calls"
+            value={fmt(totalWebhookCalls)}
+            icon="🔗"
+            grad="from-emerald-500 to-green-600"
+            sub={`${fmt(totalProdCalls)} prod · ${fmt(totalTestCalls)} test`}
+            spark={analytics?.timeSeries?.map((p) => p.count)}
+          />
+          <StatCard
+            label="Today"
+            value={fmt(totalMessagesToday)}
+            icon="📈"
+            grad="from-amber-500 to-yellow-600"
+            sub="messages received"
+            spark={analytics?.timeSeries?.map((p) => p.count)}
+          />
+          <StatCard
+            label="Success Rate"
+            value={`${analytics?.successRate ?? 100}%`}
+            icon="✅"
+            grad="from-emerald-500 to-green-600"
+            sub={`${analytics?.completed ?? 0} ok · ${analytics?.failed ?? 0} fail`}
+            spark={analytics?.timeSeries?.map((p) => p.count)}
+          />
+          <StatCard
+            label="Avg Response"
+            value={`${analytics?.avgResponseTime ?? "0"}s`}
+            icon="⚡"
+            grad="from-amber-500 to-yellow-600"
+            sub="estimated wait"
+            spark={analytics?.timeSeries?.map((p) => p.count)}
+          />
+          <StatCard
+            label="Prod Calls"
+            value={fmt(totalProdCalls)}
+            icon="🚀"
+            grad="from-emerald-600 to-teal-700"
+            sub={`${fmt(totalTestCalls)} test`}
+            spark={analytics?.timeSeries?.map((p) => p.count)}
+          />
+        </div>
 
-          <div className="relative grid grid-cols-1 gap-8 lg:grid-cols-[1.4fr_1fr]">
-            <div>
-              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-indigo-100 backdrop-blur">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                </span>
-                Control Center
-              </div>
-              <p className="mb-6 max-w-md text-sm text-indigo-100/80">
-                Suivez en temps réel vos messages, produits et performances
-                depuis un tableau de bord moderne.
-              </p>
-
-              {/* Hero quick stats — vibrant gradient cards */}
-              <div className="grid max-w-2xl grid-cols-3 gap-4">
-                <div className="rounded-2xl bg-linear-to-br from-indigo-500 to-blue-500 p-4 shadow-lg shadow-indigo-500/30">
-                  <p className="text-xs font-medium text-indigo-100">
-                    Messages
-                  </p>
-                  <p className="mt-1 text-2xl font-extrabold text-white">
-                    {analytics?.total ?? totalWebhookCalls}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-linear-to-br from-emerald-500 to-teal-500 p-4 shadow-lg shadow-emerald-500/30">
-                  <p className="text-xs font-medium text-emerald-100">
-                    Success
-                  </p>
-                  <p className="mt-1 text-2xl font-extrabold text-white">
-                    {analytics?.successRate ?? 100}%
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-linear-to-br from-purple-500 to-fuchsia-500 p-4 shadow-lg shadow-purple-500/30">
-                  <p className="text-xs font-medium text-purple-100">
-                    Products
-                  </p>
-                  <p className="mt-1 text-2xl font-extrabold text-white">
-                    {products.length}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Hero right: success donut */}
-            <div className="flex flex-col items-center justify-center rounded-3xl bg-linear-to-br from-emerald-500/20 to-teal-500/20 p-6 backdrop-blur">
-              <p className="text-sm font-semibold text-emerald-100">
-                Taux de succès
-              </p>
-              <DonutChart
-                percentage={analytics?.successRate ?? 100}
-                color="#10b981"
-              />
-              <div className="mt-2 flex items-center gap-3 text-xs text-white/90">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                  {analytics?.completed ?? 0} ok
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                  {analytics?.failed ?? 0} échec
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ===== ANALYTICS SECTION ===== */}
+        {/* ============================================================
+            🧭 INSIGHT NAVIGATOR (dashboard view)
+        ============================================================ */}
         {activeView === "dashboard" && (
-          <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-6 rounded-2xl border border-slate-800 bg-[#0d1117] p-6 shadow-xl">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  📈 Message Analytics
+                <h2 className="text-lg font-bold text-white">
+                  🧭 Insight Navigator
                 </h2>
-                <p className="text-sm text-slate-500">
-                  Messages received by time period
+                <p className="text-sm text-slate-400">
+                  Real-time performance overview
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                  {[
-                    { id: "day", label: "Day" },
-                    { id: "week", label: "Week" },
-                    { id: "month", label: "Month" },
-                  ].map((p) => (
+              <div className="flex items-center gap-2">
+                {/* Period selector */}
+                <div className="flex rounded-lg border border-slate-700 bg-slate-800/50 p-0.5">
+                  {["day", "week", "month"].map((p) => (
                     <button
-                      key={p.id}
-                      onClick={() => setAnalyticsPeriod(p.id)}
-                      className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                        analyticsPeriod === p.id
-                          ? "bg-white text-indigo-600 shadow-sm"
-                          : "text-slate-500 hover:text-slate-700"
+                      key={p}
+                      onClick={() => setAnalyticsPeriod(p)}
+                      className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        analyticsPeriod === p
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : "text-slate-400 hover:bg-slate-700"
                       }`}
                     >
-                      {p.label}
+                      {p === "day" ? "1D" : p === "week" ? "1W" : "1M"}
                     </button>
                   ))}
                 </div>
+                {/* Product filter */}
                 <select
                   value={analyticsProduct}
                   onChange={(e) => setAnalyticsProduct(e.target.value)}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs text-white outline-none focus:border-emerald-500"
                 >
-                  <option value="">All Products</option>
+                  <option value="">All products</option>
                   {products.map((p) => (
                     <option key={p._id} value={p._id}>
                       {p.name}
                     </option>
                   ))}
                 </select>
+                <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-400">
+                  {analytics?.period === "day"
+                    ? "Today"
+                    : analytics?.period === "month"
+                      ? "This month"
+                      : "This week"}
+                </span>
               </div>
             </div>
 
-            {loadingAnalytics ? (
-              <div className="flex justify-center py-12">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
-              </div>
-            ) : analytics ? (
-              <div>
-                {/* Bar chart (modern graph) */}
-                <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">
-                        Messages over time
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {analytics.period === "day"
-                          ? "Par heure"
-                          : analytics.period === "week"
-                            ? "Par jour"
-                            : "Par semaine"}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600">
-                      {analytics.total || 0} total
-                    </span>
-                  </div>
-                  {analytics.timeSeries && analytics.timeSeries.length > 0 ? (
-                    <BarChart data={analytics.timeSeries} />
-                  ) : (
-                    <p className="py-10 text-center text-sm text-slate-400">
-                      Aucune donnée sur cette période.
-                    </p>
-                  )}
-                </div>
-
-                {/* Summary cards */}
-                <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                  <div className="rounded-2xl bg-linear-to-br from-indigo-500 to-blue-500 p-4 shadow-lg shadow-indigo-500/20">
-                    <p className="text-xs font-medium text-indigo-100">
-                      Total Messages
-                    </p>
-                    <p className="mt-1 text-3xl font-bold text-white">
-                      {analytics.total || 0}
-                    </p>
-                    <p className="mt-1 text-xs text-indigo-100/80">
-                      Received from webhooks
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-linear-to-br from-emerald-500 to-teal-500 p-4 shadow-lg shadow-emerald-500/20">
-                    <p className="text-xs font-medium text-emerald-100">
-                      Success Rate
-                    </p>
-                    <p className="mt-1 text-3xl font-bold text-white">
-                      {analytics.successRate ?? 100}%
-                    </p>
-                    <p className="mt-1 text-xs text-emerald-100/80">
-                      {analytics.completed || 0} completed ·{" "}
-                      {analytics.failed || 0} failed
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-linear-to-br from-amber-500 to-orange-500 p-4 shadow-lg shadow-amber-500/20">
-                    <p className="text-xs font-medium text-amber-100">
-                      Avg Response Time
-                    </p>
-                    <p className="mt-1 text-3xl font-bold text-white">
-                      {analytics.avgResponseTime || "0"}s
-                    </p>
-                    <p className="mt-1 text-xs text-amber-100/80">
-                      Estimated from waiting time
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-linear-to-br from-purple-500 to-fuchsia-500 p-4 shadow-lg shadow-purple-500/20">
-                    <p className="text-xs font-medium text-purple-100">
-                      Active Products
-                    </p>
-                    <p className="mt-1 text-3xl font-bold text-white">
-                      {products.filter((p) => p.status !== "Inactive").length}
-                    </p>
-                    <p className="mt-1 text-xs text-purple-100/80">
-                      {products.length} total products
-                    </p>
-                  </div>
-                </div>
-
-                {/* Per-product table */}
-                <div className="overflow-hidden rounded-xl border border-slate-200">
-                  <table className="min-w-full divide-y divide-slate-200">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        {[
-                          "Product",
-                          "Messages",
-                          "Test",
-                          "Production",
-                          "Completed",
-                          "Failed",
-                        ].map((h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
-                      {analytics.products?.map((p) => (
-                        <tr
-                          key={p.id}
-                          className="transition-colors hover:bg-slate-50"
-                        >
-                          <td className="px-4 py-3 text-sm font-semibold text-slate-900">
-                            {p.name}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-slate-700">
-                            {p.count}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-amber-600">
-                            {p.test}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-emerald-600">
-                            {p.prod}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-indigo-600">
-                            {p.completed}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-rose-600">
-                            {p.failed}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Recent webhook calls */}
-                {analytics.recentCalls && analytics.recentCalls.length > 0 && (
-                  <div className="mt-6">
-                    <p className="mb-3 text-sm font-semibold text-slate-700">
-                      🔔 Recent Webhook Calls
-                    </p>
-                    <div className="space-y-3">
-                      {analytics.recentCalls.map((call) => (
-                        <div
-                          key={call.id}
-                          className="flex items-start justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-4"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`h-2 w-2 shrink-0 rounded-full ${
-                                  call.status === "completed"
-                                    ? "bg-emerald-500"
-                                    : call.status === "failed"
-                                      ? "bg-rose-500"
-                                      : "bg-amber-500"
-                                }`}
-                              />
-                              <p className="text-sm font-semibold text-slate-900">
-                                {call.product_name}
-                              </p>
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                                {call.mode === "test" ? "🧪 Test" : "🚀 Prod"}
-                              </span>
-                            </div>
-                            <p className="mt-1 truncate text-sm text-slate-600">
-                              <span className="text-slate-400">
-                                {call.sender_id}:
-                              </span>{" "}
-                              &ldquo;{call.message}&rdquo;
-                            </p>
-                          </div>
-                          <div className="ml-3 shrink-0 text-right">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                call.status === "completed"
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : call.status === "failed"
-                                    ? "bg-rose-100 text-rose-700"
-                                    : "bg-amber-100 text-amber-700"
-                              }`}
-                            >
-                              {call.status}
-                            </span>
-                            <p className="mt-1 text-xs text-slate-400">
-                              {new Date(call.created_at).toLocaleString()}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+            {/* Mini trend + top product (multi-pane) */}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div className="rounded-2xl border border-slate-800 bg-[#11151d] p-4 lg:col-span-2">
+                <p className="mb-3 text-sm font-semibold text-slate-200">
+                  📈 Message Trend
+                </p>
+                {analytics?.timeSeries && analytics.timeSeries.length > 0 ? (
+                  <BarChart data={analytics.timeSeries} height={160} />
+                ) : (
+                  <p className="py-8 text-center text-sm text-slate-500">
+                    No data for this period yet.
+                  </p>
                 )}
               </div>
-            ) : (
-              <p className="py-10 text-center text-sm text-slate-500">
-                No analytics data available.
-              </p>
-            )}
+
+              {/* Top product */}
+              <div className="rounded-2xl border border-slate-800 bg-[#11151d] p-4">
+                <p className="mb-3 text-sm font-semibold text-slate-200">
+                  🏆 Top Product
+                </p>
+                {analytics?.products && analytics.products.length > 0 ? (
+                  (() => {
+                    const top = [...analytics.products].sort(
+                      (a, b) => b.count - a.count,
+                    )[0];
+                    return (
+                      <div className="flex flex-col items-center justify-center py-4 text-center">
+                        <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 text-3xl text-white shadow-lg shadow-emerald-500/30">
+                          📦
+                        </div>
+                        <p className="text-lg font-bold text-white">
+                          {top.name}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-400">
+                          {top.count} messages
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400">
+                            🧪 {top.test} test
+                          </span>
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                            🚀 {top.prod} prod
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <p className="py-8 text-center text-sm text-slate-500">
+                    No products yet.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* ===== PRODUCTS VIEW ===== */}
+        {/* ============================================================
+            📦 PRODUCTS VIEW (data-dense table + cards)
+        ============================================================ */}
         {(activeView === "dashboard" || activeView === "products") && (
           <>
-            {/* Stats cards */}
-            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard
-                label="Total Products"
-                value={totalProducts}
-                icon="📦"
-                grad="from-blue-500 to-indigo-500"
-                sub={`${products.filter((p) => p.enabled).length} active`}
-                spark={analytics?.timeSeries?.map((p) => p.count)}
-              />
-              <StatCard
-                label="Webhook Calls"
-                value={totalWebhookCalls}
-                icon="🔗"
-                grad="from-emerald-500 to-teal-500"
-                spark={analytics?.timeSeries?.map((p) => p.count)}
-              />
-              <StatCard
-                label="Test Calls"
-                value={totalTestCalls}
-                icon="🧪"
-                grad="from-amber-500 to-orange-500"
-                spark={analytics?.timeSeries?.map((p) => p.count)}
-              />
-              <StatCard
-                label="Production Calls"
-                value={totalProdCalls}
-                icon="🚀"
-                grad="from-purple-500 to-fuchsia-500"
-                spark={analytics?.timeSeries?.map((p) => p.count)}
-              />
-            </div>
-
-            {/* Products header */}
-            <div className="mb-6 flex items-center justify-between">
+            {/* Products header + search + new */}
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  Your Products
+                <h2 className="text-xl font-bold text-white">
+                  📦 Product Terminal
                 </h2>
-                <p className="text-sm text-slate-500">
-                  Manage and monitor your products
+                <p className="text-sm text-slate-400">
+                  {filteredProducts.length} of {products.length} products
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  setWaitTimeEnabled(true);
-                  setShowCreateForm(!showCreateForm);
-                }}
-                className="rounded-lg bg-linear-to-r from-indigo-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition-all hover:shadow-lg"
-              >
-                {showCreateForm ? "✕ Cancel" : "+ New Product"}
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Terminal search bar */}
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500">
+                    🔍
+                  </span>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search products..."
+                    className="w-52 rounded-lg border border-slate-700 bg-slate-800 py-2 pl-8 pr-3 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    setWaitTimeEnabled(true);
+                    setShowCreateForm(!showCreateForm);
+                  }}
+                  className="rounded-lg bg-linear-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-600/20 transition-all hover:shadow-lg"
+                >
+                  {showCreateForm ? "✕ Cancel" : "+ New Product"}
+                </button>
+              </div>
             </div>
 
             {/* Create form */}
             {showCreateForm && (
-              <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 className="mb-4 text-lg font-bold text-slate-900">
+              <div className="mb-6 rounded-2xl border border-slate-800 bg-[#0d1117] p-6 shadow-sm">
+                <h3 className="mb-4 text-lg font-bold text-white">
                   Create New Product
                 </h3>
                 <form
@@ -1435,7 +1069,7 @@ export default function DashboardPage() {
                   className="grid grid-cols-1 gap-4 sm:grid-cols-2"
                 >
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-sm font-medium text-slate-300">
                       Product Name
                     </label>
                     <input
@@ -1443,11 +1077,11 @@ export default function DashboardPage() {
                       name="name"
                       placeholder="e.g. Pizza Menu"
                       required
-                      className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-sm font-medium text-slate-300">
                       Price (DZD)
                     </label>
                     <input
@@ -1455,11 +1089,11 @@ export default function DashboardPage() {
                       name="price"
                       placeholder="e.g. 1500"
                       required
-                      className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-sm font-medium text-slate-300">
                       Quantity
                     </label>
                     <input
@@ -1467,22 +1101,22 @@ export default function DashboardPage() {
                       name="quantity"
                       placeholder="e.g. 20"
                       required
-                      className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-sm font-medium text-slate-300">
                       Description
                     </label>
                     <input
                       type="text"
                       name="description"
                       placeholder="Optional description"
-                      className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-sm font-medium text-slate-300">
                       Wait Time
                     </label>
                     <div className="flex items-center gap-3">
@@ -1513,7 +1147,7 @@ export default function DashboardPage() {
                   </div>
                   {waitTimeEnabled && (
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-sm font-medium text-slate-700">
+                      <label className="text-sm font-medium text-slate-300">
                         Waiting Time (seconds)
                       </label>
                       <input
@@ -1523,18 +1157,18 @@ export default function DashboardPage() {
                         defaultValue="7"
                         min="1"
                         max="30"
-                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                       />
                     </div>
                   )}
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-sm font-medium text-slate-300">
                       🤖 Select AI Model
                     </label>
                     <select
                       value={selectedWebhook}
                       onChange={(e) => setSelectedWebhook(e.target.value)}
-                      className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                     >
                       <option value="">Select an AI model...</option>
                       {webhooks.map((w) => (
@@ -1551,13 +1185,13 @@ export default function DashboardPage() {
                     )}
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-sm font-medium text-slate-300">
                       🔑 Select Keyword List
                     </label>
                     <select
                       value={selectedKeywordList}
                       onChange={(e) => setSelectedKeywordList(e.target.value)}
-                      className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                     >
                       <option value="">Select a keyword list...</option>
                       {keywordLists.map((k) => (
@@ -1592,28 +1226,31 @@ export default function DashboardPage() {
             {/* Product list */}
             {loadingProducts ? (
               <div className="flex justify-center py-20">
-                <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
               </div>
-            ) : products.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+            ) : filteredProducts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-[#0d1117] px-6 py-16 text-center">
                 <div className="text-5xl">📭</div>
-                <h3 className="mt-4 text-lg font-semibold text-slate-900">
-                  No products yet
+                <h3 className="mt-4 text-lg font-semibold text-white">
+                  {q ? "No matching products" : "No products yet"}
                 </h3>
-                <p className="mt-2 max-w-sm text-sm text-slate-500">
-                  Create your first product to get a webhook URL and start
-                  receiving messages.
+                <p className="mt-2 max-w-sm text-sm text-slate-400">
+                  {q
+                    ? `No products match "${searchQuery}".`
+                    : "Create your first product to get a webhook URL and start receiving messages."}
                 </p>
-                <button
-                  onClick={() => setShowCreateForm(true)}
-                  className="mt-6 rounded-lg bg-linear-to-r from-indigo-600 to-purple-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md"
-                >
-                  + Create Product
-                </button>
+                {!q && (
+                  <button
+                    onClick={() => setShowCreateForm(true)}
+                    className="mt-6 rounded-lg bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md"
+                  >
+                    + Create Product
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {products.map((product) => {
+                {filteredProducts.map((product) => {
                   const isProd = product.mode !== "test";
                   const webhookUrl = `${window.location.origin}/api/webhook/${product.api_key}`;
                   const testWebhookUrl = `${window.location.origin}/api/webhook/test/${product.api_key}`;
@@ -1622,37 +1259,37 @@ export default function DashboardPage() {
                   return (
                     <div
                       key={product._id}
-                      className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-lg"
+                      className="flex flex-col overflow-hidden rounded-2xl border border-slate-800 bg-[#0d1117] shadow-sm transition-all hover:border-emerald-500/40 hover:shadow-lg"
                     >
                       {/* Card header */}
-                      <div className="flex items-start justify-between border-b border-slate-100 bg-linear-to-r from-slate-50 to-white px-6 py-4">
+                      <div className="flex items-start justify-between border-b border-slate-800 bg-linear-to-r from-[#11151d] to-[#0d1117] px-6 py-4">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="text-lg font-bold text-slate-900">
+                            <h3 className="text-lg font-bold text-white">
                               {product.name}
                             </h3>
                             {product.waiting_time_enabled !== false && (
-                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400">
                                 ⏱️ {product.waiting_time || 7}s
                               </span>
                             )}
                           </div>
-                          <p className="mt-0.5 text-sm text-slate-500">
+                          <p className="mt-0.5 text-sm text-slate-400">
                             {product.description || "No description"}
                           </p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {product.category && (
-                              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
                                 {product.category}
                               </span>
                             )}
                             {product.subcategory && (
-                              <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                              <span className="rounded-full bg-teal-500/15 px-2 py-0.5 text-xs font-medium text-teal-400">
                                 {product.subcategory}
                               </span>
                             )}
                             {product.stock_status && (
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                              <span className="rounded-full bg-slate-700/50 px-2 py-0.5 text-xs font-medium text-slate-300">
                                 Stock: {product.stock_status}
                               </span>
                             )}
@@ -1710,14 +1347,14 @@ export default function DashboardPage() {
                           <span
                             className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                               isProd
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-amber-100 text-amber-700"
+                                ? "bg-emerald-500/15 text-emerald-400"
+                                : "bg-amber-500/15 text-amber-400"
                             }`}
                           >
                             {isProd ? "🚀 Production" : "🧪 Test"}
                           </span>
                           {product.enabled === false && (
-                            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                            <span className="rounded-full bg-slate-700/50 px-2 py-0.5 text-xs font-semibold text-slate-300">
                               ⏸️ Webhook Off
                             </span>
                           )}
@@ -1734,31 +1371,31 @@ export default function DashboardPage() {
                       <div className="flex-1 px-6 py-4">
                         <div className="mb-4 flex items-center gap-6">
                           <div>
-                            <p className="text-xs text-slate-500">Price</p>
-                            <p className="text-xl font-bold text-slate-900">
+                            <p className="text-xs text-slate-400">Price</p>
+                            <p className="text-xl font-bold text-emerald-400">
                               {product.price} DZD
                             </p>
                           </div>
                           {product.compare_price && (
                             <div>
-                              <p className="text-xs text-slate-500">Compare</p>
-                              <p className="text-lg font-semibold text-slate-400 line-through">
+                              <p className="text-xs text-slate-400">Compare</p>
+                              <p className="text-lg font-semibold text-slate-500 line-through">
                                 {product.compare_price} DZD
                               </p>
                             </div>
                           )}
                           <div>
-                            <p className="text-xs text-slate-500">Stock</p>
-                            <p className="text-xl font-bold text-slate-900">
+                            <p className="text-xs text-slate-400">Stock</p>
+                            <p className="text-xl font-bold text-white">
                               {product.quantity}
                             </p>
                           </div>
                           {product.waiting_time_enabled !== false && (
                             <div>
-                              <p className="text-xs text-slate-500">
+                              <p className="text-xs text-slate-400">
                                 Wait Time
                               </p>
-                              <p className="text-xl font-bold text-slate-900">
+                              <p className="text-xl font-bold text-white">
                                 {product.waiting_time || 7}s
                               </p>
                             </div>
@@ -1766,14 +1403,14 @@ export default function DashboardPage() {
                         </div>
 
                         {(product.name_ar || product.name_fr) && (
-                          <div className="mb-4 rounded-lg bg-slate-50 p-3">
+                          <div className="mb-4 rounded-lg bg-slate-800/50 p-3">
                             {product.name_ar && (
-                              <p className="text-sm text-slate-700" dir="rtl">
+                              <p className="text-sm text-slate-200" dir="rtl">
                                 {product.name_ar}
                               </p>
                             )}
                             {product.name_fr && (
-                              <p className="text-sm text-slate-700">
+                              <p className="text-sm text-slate-200">
                                 {product.name_fr}
                               </p>
                             )}
@@ -1782,20 +1419,20 @@ export default function DashboardPage() {
 
                         {/* Webhook URL */}
                         <div className="mb-4">
-                          <p className="mb-1.5 text-xs font-medium text-slate-500">
+                          <p className="mb-1.5 text-xs font-medium text-slate-400">
                             {isProd
                               ? "🔗 Production Webhook URL"
                               : "🧪 Test Webhook URL"}
                           </p>
                           <div className="flex items-center gap-2">
-                            <code className="flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700">
+                            <code className="flex-1 truncate rounded-lg bg-slate-800 px-3 py-2 text-xs text-emerald-400">
                               {activeUrl}
                             </code>
                             <button
                               onClick={() =>
                                 copyToClipboard(activeUrl, product._id)
                               }
-                              className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                              className="shrink-0 rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800"
                             >
                               {copiedId === product._id
                                 ? "✅ Copied"
@@ -1806,17 +1443,17 @@ export default function DashboardPage() {
 
                         {/* Call stats */}
                         <div className="grid grid-cols-1 gap-3">
-                          <div className="rounded-lg bg-amber-50 p-3">
+                          <div className="rounded-lg bg-amber-500/10 p-3">
                             <div className="flex items-center justify-between">
-                              <p className="text-xs font-medium text-amber-700">
+                              <p className="text-xs font-medium text-amber-400">
                                 🧪 Test Messages
                               </p>
-                              <p className="text-xs font-semibold text-amber-800">
+                              <p className="text-xs font-semibold text-amber-400">
                                 {product.test_calls_today || 0} /{" "}
                                 {product.test_calls_limit || 25} today
                               </p>
                             </div>
-                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-amber-200/60">
+                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-amber-500/20">
                               <div
                                 className={`h-full rounded-full ${
                                   (product.test_calls_today || 0) >=
@@ -1834,21 +1471,21 @@ export default function DashboardPage() {
                                 }}
                               />
                             </div>
-                            <p className="mt-1 text-[11px] text-amber-600">
+                            <p className="mt-1 text-[11px] text-amber-500">
                               {product.webhook_calls_test || 0} total test calls
                             </p>
                           </div>
-                          <div className="rounded-lg bg-emerald-50 p-3">
+                          <div className="rounded-lg bg-emerald-500/10 p-3">
                             <div className="flex items-center justify-between">
-                              <p className="text-xs font-medium text-emerald-700">
+                              <p className="text-xs font-medium text-emerald-400">
                                 🚀 Production Messages
                               </p>
-                              <p className="text-xs font-semibold text-emerald-800">
+                              <p className="text-xs font-semibold text-emerald-400">
                                 {product.prod_calls_today || 0} /{" "}
                                 {product.prod_calls_limit || 10000} today
                               </p>
                             </div>
-                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-emerald-200/60">
+                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-emerald-500/20">
                               <div
                                 className={`h-full rounded-full ${
                                   (product.prod_calls_today || 0) >=
@@ -1866,16 +1503,16 @@ export default function DashboardPage() {
                                 }}
                               />
                             </div>
-                            <p className="mt-1 text-[11px] text-emerald-600">
+                            <p className="mt-1 text-[11px] text-emerald-500/80">
                               {product.webhook_calls_prod || 0} total production
                               calls
                             </p>
                           </div>
-                          <div className="rounded-lg bg-slate-50 p-3 text-center">
-                            <p className="text-lg font-bold text-slate-900">
+                          <div className="rounded-lg bg-slate-800/50 p-3 text-center">
+                            <p className="text-lg font-bold text-white">
                               {product.webhook_calls || 0}
                             </p>
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-slate-400">
                               Total Calls (all time)
                             </p>
                           </div>
@@ -1883,13 +1520,13 @@ export default function DashboardPage() {
                       </div>
 
                       {/* Card footer */}
-                      <div className="border-t border-slate-100 px-6 py-3">
+                      <div className="border-t border-slate-800 px-6 py-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-slate-400">
                             Created:{" "}
                             {new Date(product.created_at).toLocaleDateString()}
                           </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-400">
                             API: {product.api_key?.slice(0, 12)}...
                           </span>
                         </div>
@@ -1898,20 +1535,20 @@ export default function DashboardPage() {
                             onClick={() =>
                               router.push(`/products/${product._id}`)
                             }
-                            className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-100"
+                            className="rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-emerald-500/25"
                           >
                             📊 Details
                           </button>
                           <button
                             onClick={() => viewMessages(product)}
-                            className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
+                            className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700"
                           >
                             💬 Messages ({product.webhook_calls || 0})
                           </button>
                           <button
                             onClick={() => sendTestMessage(product)}
                             disabled={testingId === product._id}
-                            className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                            className="rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/25 disabled:opacity-50"
                           >
                             {testingId === product._id
                               ? "Sending..."
@@ -1924,13 +1561,13 @@ export default function DashboardPage() {
                               );
                               setEditingProduct(product);
                             }}
-                            className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-200"
+                            className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700"
                           >
                             ✏️ Edit
                           </button>
                           <button
                             onClick={() => setDeletingProduct(product)}
-                            className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100"
+                            className="rounded-lg bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-400 transition-colors hover:bg-rose-500/25"
                           >
                             🗑️ Delete
                           </button>
@@ -1945,7 +1582,81 @@ export default function DashboardPage() {
         )}
       </main>
 
-      {/* ===== User Info Modal ===== */}
+      {/* ============================================================
+          STATUS BAR (terminal bottom)
+      ============================================================ */}
+      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800 bg-[#0d1117]/95 backdrop-blur-md">
+        <div className="flex items-center justify-between px-4 py-1.5 text-[11px] font-mono text-slate-500">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              DB CONNECTED
+            </span>
+            <span className="text-slate-600">|</span>
+            <span>
+              {products.length} PROD · {totalWebhookCalls} CALLS ·{" "}
+              {totalMessagesToday} TODAY
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-slate-600">
+              SYNC {lastSync ? clockTime(lastSync) : "--:--:--"}
+            </span>
+            <span className="text-slate-600">|</span>
+            <span className="text-emerald-400">● LIVE</span>
+          </div>
+        </div>
+      </footer>
+
+      {/* ============================================================
+          ⌨️  KEYBOARD SHORTCUTS HELP MODAL
+      ============================================================ */}
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowHelp(false)}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-700 bg-[#0d1117] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 bg-linear-to-r from-emerald-600 to-teal-600 px-6 py-4">
+              <h3 className="text-lg font-bold text-white">
+                ⌨️ Keyboard Shortcuts
+              </h3>
+              <button
+                onClick={() => setShowHelp(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/20"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2.5 px-6 py-5">
+              {[
+                ["1", "Dashboard view"],
+                ["2", "Products view"],
+                ["3", "Messages page"],
+                ["n", "New product"],
+                ["r", "Refresh data"],
+                ["?", "Toggle this help"],
+                ["Esc", "Close modals"],
+              ].map(([key, desc]) => (
+                <div
+                  key={key}
+                  className="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2"
+                >
+                  <span className="text-sm text-slate-300">{desc}</span>
+                  <kbd className="rounded border border-slate-600 bg-slate-700 px-2 py-0.5 text-xs font-mono text-emerald-300">
+                    {key}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          👤 USER INFO MODAL
+      ============================================================ */}
       {showUserInfo && user && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -1953,7 +1664,6 @@ export default function DashboardPage() {
             onClick={() => setShowUserInfo(false)}
           />
           <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
-            {/* Header */}
             <div className="bg-linear-to-r from-indigo-600 to-purple-600 px-6 py-6 text-white">
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 text-2xl font-bold">
@@ -1966,9 +1676,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Body */}
             <div className="space-y-4 px-6 py-6">
-              {/* Full name */}
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="text-xs font-medium text-slate-500">
                   👤 Full Name
@@ -1978,7 +1686,6 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              {/* Email */}
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="text-xs font-medium text-slate-500">📧 Email</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">
@@ -2095,7 +1802,6 @@ export default function DashboardPage() {
               </form>
             </div>
 
-            {/* Footer */}
             <div className="border-t border-slate-100 px-6 py-4">
               <button
                 onClick={() => setShowUserInfo(false)}
@@ -2108,7 +1814,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ===== Edit Product Modal ===== */}
+      {/* ============================================================
+          ✏️ EDIT PRODUCT MODAL
+      ============================================================ */}
       {editingProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -2587,7 +2295,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ===== Delete Confirmation Modal ===== */}
+      {/* ============================================================
+          🗑️ DELETE CONFIRMATION MODAL
+      ============================================================ */}
       {deletingProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -2622,7 +2332,9 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ===== View Messages Modal ===== */}
+      {/* ============================================================
+          💬 VIEW MESSAGES MODAL
+      ============================================================ */}
       {viewingMessages && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div

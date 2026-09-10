@@ -205,8 +205,8 @@ export default function MessagesPage() {
   // ✅ AUTO-PROCESS when the countdown hits 0.
   //    When any received message's batch timer expires (0s), we call the
   //    `/api/batches/process` endpoint which runs `processBatch` and sends
-  //    the joined conversation to the n8n webhook. This makes the messages
-  //    actually get processed the moment the countdown reaches zero.
+  //    the joined conversation to the n8n webhook. This is a safety net in
+  //    case the webhook route's own processing didn't fire.
   useEffect(() => {
     if (!user) return;
     const expired = messages.filter(

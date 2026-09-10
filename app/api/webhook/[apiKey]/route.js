@@ -9,9 +9,7 @@ import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
 
-// ✅ No timers. The batch is processed directly and awaited within this
-//    request, so it reliably reaches n8n on both local and serverless
-//    (Vercel) without relying on setTimeout or a cron.
+// ✅ Messages are saved to batches and processed automatically (sent to n8n).
 export const maxDuration = 60;
 
 // ✅ Read the daily PRODUCTION-call limit from the admin Settings.
@@ -314,7 +312,25 @@ export async function POST(request, { params }) {
     }
 
     // ============================================
-    // ✅ 6. PROCESS THE BATCH
+    // ✅ 5b. INCREMENT WEBHOOK CALL COUNTERS
+    //    Track how many times this product's webhook was called.
+    //    - webhook_calls:      total (test + prod)
+    //    - webhook_calls_prod: production calls
+    //    Non-fatal: if the increment fails, the message still processes.
+    // ============================================
+    try {
+      await Product.findByIdAndUpdate(product._id, {
+        $inc: { webhook_calls: 1, webhook_calls_prod: 1 },
+      });
+    } catch (counterError) {
+      console.error(
+        "⚠️ Failed to increment webhook counter:",
+        counterError.message,
+      );
+    }
+
+    // ============================================
+    // ✅ 6. PROCESS THE BATCH (send to n8n)
     //    - If wait time is ENABLED (debounce > 0s), do NOT force. The
     //      batch stays open and the scheduler (/api/batches/process) picks
     //      it up once expires_at passes, JOINING all messages that landed
