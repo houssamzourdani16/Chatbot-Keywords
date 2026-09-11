@@ -12,7 +12,7 @@ const EMPTY_FORM = {
   sheet_name: "Sheet1",
   range: "A:Z",
   columns: {
-    sender_id_column: 0,
+    sender_id_column: 1,
     max_conversation_columns: 0,
   },
 };
@@ -111,7 +111,7 @@ export default function AdminConversationsSheetPage() {
       sheet_name: config.sheet_name || "Sheet1",
       range: config.range || "A:Z",
       columns: {
-        sender_id_column: config.columns?.sender_id_column || 0,
+        sender_id_column: config.columns?.sender_id_column ?? 1,
         max_conversation_columns: config.columns?.max_conversation_columns || 0,
       },
     });
@@ -470,7 +470,7 @@ export default function AdminConversationsSheetPage() {
                     </div>
                   </div>
                   <p className="mt-2 text-xs text-gray-500">
-                    Column A (0) = Sender ID. Columns after it hold the
+                    Column B (1) = Sender ID. Columns after it hold the
                     conversation messages.
                   </p>
                 </div>
