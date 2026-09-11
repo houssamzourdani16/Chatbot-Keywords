@@ -245,11 +245,9 @@ export default function DashboardPage() {
 
   // ---- Webhook models (AI models) for product creation ----
   const [webhooks, setWebhooks] = useState([]);
-  const [selectedWebhook, setSelectedWebhook] = useState("");
 
   // ---- Keyword lists (Google Sheets) for product creation ----
   const [keywordLists, setKeywordLists] = useState([]);
-  const [selectedKeywordList, setSelectedKeywordList] = useState("");
 
   // ---- Live countdown state: ticks every second ----
   const [now, setNow] = useState(() => Date.now());
@@ -416,6 +414,9 @@ export default function DashboardPage() {
         case "3":
           router.push("/dashboard/messages");
           break;
+        case "4":
+          router.push("/dashboard/messages/all");
+          break;
         case "n":
         case "N":
           setWaitTimeEnabled(true);
@@ -453,12 +454,6 @@ export default function DashboardPage() {
     setError("");
 
     formData.append("userId", user.id);
-    if (selectedWebhook) {
-      formData.append("webhook_model_id", selectedWebhook);
-    }
-    if (selectedKeywordList) {
-      formData.append("keyword_list_id", selectedKeywordList);
-    }
     const result = await createProduct(formData);
 
     if (result.success) {
@@ -732,6 +727,13 @@ export default function DashboardPage() {
       icon: "💬",
       key: "3",
       href: "/dashboard/messages",
+    },
+    {
+      id: "all-messages",
+      label: "All Messages",
+      icon: "📚",
+      key: "4",
+      href: "/dashboard/messages/all",
     },
   ];
 
@@ -1026,7 +1028,7 @@ export default function DashboardPage() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search products..."
-                    className="w-52 rounded-lg border border-slate-700 bg-slate-800 py-2 pl-8 pr-3 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                    className="w-52 rounded-lg border border-slate-700 bg-slate-800 py-2 pl-8 pr-3 text-sm text-white placeholder-slate-400 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                   />
                 </div>
                 <button
@@ -1040,120 +1042,461 @@ export default function DashboardPage() {
 
             {/* Create form */}
             {showCreateForm && (
-              <div className="mb-6 rounded-2xl border border-slate-800 bg-[#0d1117] p-6 shadow-sm">
-                <h3 className="mb-4 text-lg font-bold text-white">
-                  Create New Product
-                </h3>
-                <form
-                  action={handleCreate}
-                  className="grid grid-cols-1 gap-4 sm:grid-cols-2"
-                >
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-300">
-                      Product Name
-                    </label>
-                    <input
-                      type="text"
-                      name="name"
-                      placeholder="e.g. Pizza Menu"
-                      required
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-300">
-                      Price (DZD)
-                    </label>
-                    <input
-                      type="number"
-                      name="price"
-                      placeholder="e.g. 1500"
-                      required
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-300">
-                      Quantity
-                    </label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      placeholder="e.g. 20"
-                      required
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-300">
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      name="description"
-                      placeholder="Optional description"
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-300">
-                      🤖 Select AI Model
-                    </label>
-                    <select
-                      value={selectedWebhook}
-                      onChange={(e) => setSelectedWebhook(e.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                    >
-                      <option value="">Select an AI model...</option>
-                      {webhooks.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name}
-                          {w.description ? ` — ${w.description}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    {webhooks.length === 0 && (
-                      <p className="text-xs text-slate-400">
-                        No AI models available yet. Contact the admin.
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <div
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => setShowCreateForm(false)}
+                />
+                <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+                  <h3 className="text-lg font-bold text-slate-900">
+                    ➕ Create New Product
+                  </h3>
+                  <form
+                    action={handleCreate}
+                    className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2"
+                  >
+                    {/* Basics */}
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Product Name
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        placeholder="e.g. Pizza Menu"
+                        required
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Price (DZD)
+                      </label>
+                      <input
+                        type="number"
+                        name="price"
+                        placeholder="e.g. 1500"
+                        required
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Quantity
+                      </label>
+                      <input
+                        type="number"
+                        name="quantity"
+                        placeholder="e.g. 20"
+                        required
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Compare Price (optional)
+                      </label>
+                      <input
+                        type="number"
+                        name="compare_price"
+                        placeholder="e.g. 1800"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Description
+                      </label>
+                      <input
+                        type="text"
+                        name="description"
+                        placeholder="Optional description"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Arabic Description
+                      </label>
+                      <input
+                        type="text"
+                        name="description_ar"
+                        placeholder="الوصف بالعربية"
+                        dir="rtl"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Status
+                      </label>
+                      <select
+                        name="status"
+                        defaultValue="Active"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                        <option value="Coming Soon">Coming Soon</option>
+                      </select>
+                    </div>
+
+                    {/* Classification */}
+                    <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                      <p className="text-sm font-semibold text-slate-700">
+                        🏷 Classification
                       </p>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-slate-300">
-                      🔑 Select Keyword List
-                    </label>
-                    <select
-                      value={selectedKeywordList}
-                      onChange={(e) => setSelectedKeywordList(e.target.value)}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                    >
-                      <option value="">Select a keyword list...</option>
-                      {keywordLists.map((k) => (
-                        <option key={k.id} value={k.id}>
-                          {k.name}
-                          {k.dialect ? ` — ${k.dialect}` : ""}
-                          {k.stats?.total_keywords
-                            ? ` (${k.stats.total_keywords} keywords)`
-                            : ""}
-                        </option>
-                      ))}
-                    </select>
-                    {keywordLists.length === 0 && (
-                      <p className="text-xs text-slate-400">
-                        No keyword lists available yet. Contact the admin.
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Category
+                      </label>
+                      <select
+                        name="category"
+                        defaultValue=""
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      >
+                        <option value="">None</option>
+                        <option value="Clothing">Clothing</option>
+                        <option value="Accessories">Accessories</option>
+                        <option value="Footwear">Footwear</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Subcategory
+                      </label>
+                      <input
+                        type="text"
+                        name="subcategory"
+                        placeholder="e.g. Hijabs/Dresses/Shirts"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Name (Arabic)
+                      </label>
+                      <input
+                        type="text"
+                        name="name_ar"
+                        placeholder="الاسم بالعربية"
+                        dir="rtl"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Name (French)
+                      </label>
+                      <input
+                        type="text"
+                        name="name_fr"
+                        placeholder="Nom en français"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+
+                    {/* Stock */}
+                    <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                      <p className="text-sm font-semibold text-slate-700">
+                        📦 Stock
                       </p>
-                    )}
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="submit"
-                      disabled={isCreating}
-                      className="w-full rounded-lg bg-linear-to-r from-emerald-600 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-emerald-600/20 transition-all hover:shadow-lg disabled:opacity-60"
-                    >
-                      {isCreating ? "Creating..." : "Create Product"}
-                    </button>
-                  </div>
-                </form>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Stock Status
+                      </label>
+                      <select
+                        name="stock_status"
+                        defaultValue="High"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      >
+                        <option value="High">High</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Low">Low</option>
+                        <option value="Out">Out of Stock</option>
+                        <option value="Preorder">Preorder</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Min Quantity per Order
+                      </label>
+                      <input
+                        type="number"
+                        name="min_quantity"
+                        min="1"
+                        defaultValue="1"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+
+                    {/* Supply */}
+                    <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                      <p className="text-sm font-semibold text-slate-700">
+                        🔧 Supply &amp; Materials
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        SKU Base
+                      </label>
+                      <input
+                        type="text"
+                        name="sku_base"
+                        placeholder="e.g. SKU-001"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Barcode
+                      </label>
+                      <input
+                        type="text"
+                        name="barcode"
+                        placeholder="e.g. 123456789012"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Supplier
+                      </label>
+                      <input
+                        type="text"
+                        name="supplier"
+                        placeholder="Supplier name"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Reorder Point
+                      </label>
+                      <input
+                        type="text"
+                        name="reorder_point"
+                        placeholder="e.g. 5"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Location / Storage
+                      </label>
+                      <input
+                        type="text"
+                        name="location"
+                        placeholder="e.g. Warehouse A"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Material
+                      </label>
+                      <input
+                        type="text"
+                        name="material"
+                        placeholder="e.g. Cotton"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Origin
+                      </label>
+                      <input
+                        type="text"
+                        name="origin"
+                        placeholder="e.g. Algeria"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Weight
+                      </label>
+                      <input
+                        type="text"
+                        name="weight"
+                        placeholder="e.g. 300g"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Care Instructions
+                      </label>
+                      <input
+                        type="text"
+                        name="care"
+                        placeholder="e.g. Machine wash"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                      <label className="text-sm font-medium text-slate-700">
+                        Warranty
+                      </label>
+                      <input
+                        type="text"
+                        name="warranty"
+                        placeholder="e.g. 1 year"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+
+                    {/* Marketing */}
+                    <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                      <p className="text-sm font-semibold text-slate-700">
+                        💝 Marketing &amp; Selling
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        USP / Unique Selling Proposition
+                      </label>
+                      <input
+                        type="text"
+                        name="usp"
+                        placeholder="e.g. Premium quality"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Target Audience
+                      </label>
+                      <input
+                        type="text"
+                        name="target_audience"
+                        placeholder="e.g. Women 18-35"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Season
+                      </label>
+                      <select
+                        name="season"
+                        defaultValue="All"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      >
+                        <option value="All">All</option>
+                        <option value="Summer">Summer</option>
+                        <option value="Winter">Winter</option>
+                        <option value="Ramadan">Ramadan</option>
+                        <option value="Eid">Eid</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        Occasion
+                      </label>
+                      <input
+                        type="text"
+                        name="occasion"
+                        placeholder="e.g. Eid"
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+
+                    {/* AI & Keywords */}
+                    <div className="border-t border-slate-100 pt-4 sm:col-span-2">
+                      <p className="text-sm font-semibold text-slate-700">
+                        🤖 AI Model &amp; Keyword List
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        🤖 AI Model
+                      </label>
+                      <select
+                        name="webhook_model_id"
+                        defaultValue=""
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      >
+                        <option value="">Select an AI model...</option>
+                        {webhooks.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name}
+                            {w.description ? ` — ${w.description}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {webhooks.length === 0 && (
+                        <p className="text-xs text-slate-400">
+                          No AI models available yet. Contact the admin.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        🔑 Keyword List
+                      </label>
+                      <select
+                        name="keyword_list_id"
+                        defaultValue=""
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      >
+                        <option value="">Select a keyword list...</option>
+                        {keywordLists.map((k) => (
+                          <option key={k.id} value={k.id}>
+                            {k.name}
+                            {k.dialect ? ` — ${k.dialect}` : ""}
+                            {k.stats?.total_keywords
+                              ? ` (${k.stats.total_keywords} keywords)`
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {keywordLists.length === 0 && (
+                        <p className="text-xs text-slate-400">
+                          No keyword lists available yet. Contact the admin.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium text-slate-700">
+                        🔐 Messenger Access Token
+                      </label>
+                      <input
+                        type="password"
+                        name="access_token"
+                        placeholder="Paste the page access token here..."
+                        className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                      <p className="text-[11px] text-slate-400">
+                        Each page has its own access token. Passed to the n8n
+                        webhook so the AI agent can reply on behalf of this
+                        page.
+                      </p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-end justify-end gap-3 sm:col-span-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateForm(false)}
+                        className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isCreating}
+                        className="rounded-lg bg-linear-to-r from-indigo-600 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-md hover:shadow-lg disabled:opacity-50"
+                      >
+                        {isCreating ? "Creating..." : "Create Product"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
 
@@ -1401,38 +1744,37 @@ export default function DashboardPage() {
                               </p>
                               <p className="text-xs font-semibold text-emerald-400">
                                 {product.prod_calls_today || 0} /{" "}
-                                {product.prod_calls_limit || 10000} today
+                                {user.role === "super_admin"
+                                  ? "Unlimited"
+                                  : product.prod_calls_limit || 10000}{" "}
+                                today
                               </p>
                             </div>
-                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-emerald-500/20">
-                              <div
-                                className={`h-full rounded-full ${
-                                  (product.prod_calls_today || 0) >=
-                                  (product.prod_calls_limit || 10000)
-                                    ? "bg-red-500"
-                                    : "bg-emerald-500"
-                                }`}
-                                style={{
-                                  width: `${Math.min(
-                                    100,
-                                    ((product.prod_calls_today || 0) /
-                                      (product.prod_calls_limit || 10000)) *
+                            <p className="mt-1 text-2xl font-bold text-emerald-400">
+                              {product.webhook_calls_prod || 0}
+                            </p>
+                            {user.role !== "super_admin" && (
+                              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-emerald-500/20">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    (product.prod_calls_today || 0) >=
+                                    (product.prod_calls_limit || 10000)
+                                      ? "bg-red-500"
+                                      : "bg-emerald-500"
+                                  }`}
+                                  style={{
+                                    width: `${Math.min(
                                       100,
-                                  )}%`,
-                                }}
-                              />
-                            </div>
+                                      ((product.prod_calls_today || 0) /
+                                        (product.prod_calls_limit || 10000)) *
+                                        100,
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                            )}
                             <p className="mt-1 text-[11px] text-emerald-500/80">
-                              {product.webhook_calls_prod || 0} total production
-                              calls
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-slate-800/50 p-3 text-center">
-                            <p className="text-lg font-bold text-white">
-                              {product.webhook_calls || 0}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              Total Calls (all time)
+                              total production calls (all time)
                             </p>
                           </div>
                         </div>
@@ -1548,6 +1890,7 @@ export default function DashboardPage() {
                 ["1", "Dashboard view"],
                 ["2", "Products view"],
                 ["3", "Messages page"],
+                ["4", "All Messages page"],
                 ["n", "New product"],
                 ["r", "Refresh data"],
                 ["?", "Toggle this help"],
@@ -2140,6 +2483,22 @@ export default function DashboardPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">
+                  🔐 Messenger Access Token
+                </label>
+                <input
+                  type="password"
+                  name="access_token"
+                  defaultValue={editingProduct.access_token || ""}
+                  placeholder="Paste the page access token here..."
+                  className="rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Each page has its own access token. It is passed to the n8n
+                  webhook so the AI agent can reply on behalf of this page.
+                </p>
               </div>
 
               {/* Actions */}

@@ -29,6 +29,11 @@ export async function GET(request) {
     const productId = searchParams.get("productId") || "";
     const status = searchParams.get("status") || "";
     const senderId = searchParams.get("senderId") || "";
+    // ✅ Keyword filter: matches detected_keywords OR the message text
+    const keyword = searchParams.get("keyword") || "";
+    // ✅ Date range filter (ISO date strings, e.g. 2026-09-01)
+    const from = searchParams.get("from") || "";
+    const to = searchParams.get("to") || "";
 
     // Get the user's products (to map product_id -> name)
     const products = await Product.find({ user_id: decoded.userId })
@@ -49,6 +54,27 @@ export async function GET(request) {
     }
     if (status) messageQuery.status = status;
     if (senderId) messageQuery.sender_id = { $regex: senderId, $options: "i" };
+    // ✅ Keyword filter: match against detected_keywords array OR the
+    //    incoming message text (case-insensitive).
+    if (keyword) {
+      const kwRegex = new RegExp(keyword, "i");
+      messageQuery.$or = [
+        { detected_keywords: kwRegex },
+        { incoming_message: kwRegex },
+      ];
+    }
+    // ✅ Date range filter on created_at (inclusive).
+    if (from || to) {
+      const dateQuery = {};
+      if (from) dateQuery.$gte = new Date(from);
+      if (to) {
+        // Include the whole "to" day by adding one day.
+        const toDate = new Date(to);
+        toDate.setDate(toDate.getDate() + 1);
+        dateQuery.$lt = toDate;
+      }
+      messageQuery.created_at = dateQuery;
+    }
 
     const [messages, total] = await Promise.all([
       Message.find(messageQuery)

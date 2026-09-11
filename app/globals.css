@@ -25,6 +25,19 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Make placeholder text dark/black so it's clearly visible on light inputs */
+::placeholder {
+  color: #000;
+  opacity: 1;
+}
+
+/* Make input text black by default (light-background inputs) */
+input,
+textarea,
+select {
+  color: #000;
+}
+
 /* Slide-in animation for live message notification toasts */
 @keyframes slideIn {
   from {

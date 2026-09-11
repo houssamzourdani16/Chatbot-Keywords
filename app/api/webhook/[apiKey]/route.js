@@ -211,6 +211,8 @@ export async function POST(request, { params }) {
     // ============================================
     // ✅ 2b. RATE LIMIT (production): configurable daily
     //    limit per product (Admin → Settings → Webhook).
+    //    SUPER ADMINS are exempt — they have no production limit.
+    //    Regular users keep the limit set by the super admin.
     // ============================================
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
@@ -221,7 +223,9 @@ export async function POST(request, { params }) {
       created_at: { $gte: startOfDay },
     });
 
-    if (todayProd >= DAILY_LIMIT) {
+    const isSuperAdmin = owner.role === "super_admin";
+
+    if (!isSuperAdmin && todayProd >= DAILY_LIMIT) {
       console.log(
         `🚫 Prod rate limit reached for ${product.name}: ${todayProd}/${DAILY_LIMIT} today`,
       );
