@@ -95,15 +95,6 @@ export async function GET(request) {
         ? Math.round(((messages.length - failed) / messages.length) * 100)
         : 100;
 
-    // Avg response time (simulated from waiting_time since we don't store it)
-    // We estimate based on product waiting_time
-    const avgResponseTime = products.length
-      ? (
-          products.reduce((sum, p) => sum + (p.waiting_time || 7), 0) /
-          products.length
-        ).toFixed(1)
-      : "0";
-
     // Recent webhook calls (last 10 messages)
     const recentCalls = messages
       .slice(-10)
@@ -135,7 +126,6 @@ export async function GET(request) {
       successRate,
       failed,
       completed,
-      avgResponseTime,
       recentCalls,
     });
   } catch (error) {

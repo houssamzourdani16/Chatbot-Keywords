@@ -17,66 +17,6 @@ const MODE_COLORS = {
   prod: "bg-indigo-100 text-indigo-700",
 };
 
-// Compute the seconds remaining until a batch's debounce timer expires.
-// Returns -1 if the timer has already passed.
-function secondsUntil(expiresAt, now) {
-  if (!expiresAt) return null;
-  const diff = new Date(expiresAt).getTime() - now;
-  return Math.ceil(diff / 1000);
-}
-
-// ⏳ Live countdown badge for a received message. Ticks down every second
-//    (e.g. 5 → 4 → 3 → 2 → 1) until the batch timer expires.
-function LiveCountdownBadge({ expiresAt, waitingTime, now, status }) {
-  const secs = secondsUntil(expiresAt, now);
-
-  // For processed messages (completed/failed), the batch timer has already
-  // run. Show the static wait time (consistent per sender) instead of a
-  // misleading countdown. This ensures ALL messages from the same sender
-  // show the SAME wait time value.
-  if (status && status !== "received") {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        ⏱️ {waitingTime}s
-      </span>
-    );
-  }
-
-  // No batch expiry info — show the static wait time as a fallback.
-  // This is the CONSISTENT wait time for all messages from the same sender.
-  if (secs === null) {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        ⏱️ {waitingTime}s
-      </span>
-    );
-  }
-
-  // Timer expired or about to expire, but batch is still "received".
-  // Show the static waiting_time (not "0s") to be consistent with other
-  // messages from the same sender. The batch will be picked up by the
-  // processing worker shortly.
-  if (secs <= 0) {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        ⏱️ {waitingTime}s
-      </span>
-    );
-  }
-
-  // Active countdown; red when running out of time.
-  const urgent = secs <= 3;
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
-        urgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-      }`}
-    >
-      <span className="inline-block animate-pulse">⏳</span> {secs}s
-    </span>
-  );
-}
-
 export default function MessagesPage() {
   const { user, loading } = useProtectPage();
   const router = useRouter();
@@ -118,10 +58,6 @@ export default function MessagesPage() {
       setError("Failed to delete message");
     }
   };
-
-  // ✅ Live countdown state: updates every second so we can show how much
-  //    time is left before a received message's batch is processed.
-  const [now, setNow] = useState(0);
 
   const getToken = () => localStorage.getItem("accessToken");
 
@@ -194,45 +130,6 @@ export default function MessagesPage() {
     }, 1000); // ✅ Poll every 1s (was 2s, now faster because endpoint is faster)
     return () => clearInterval(interval);
   }, [user, fetchMessages]);
-
-  // ✅ Tick `now` every second to drive the live countdown on message cards.
-  useEffect(() => {
-    setNow(Date.now()); // set immediately on mount
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // ✅ AUTO-PROCESS when the countdown hits 0.
-  //    When any received message's batch timer expires (0s), we call the
-  //    `/api/batches/process` endpoint which runs `processBatch` and sends
-  //    the joined conversation to the n8n webhook. This is a safety net in
-  //    case the webhook route's own processing didn't fire.
-  useEffect(() => {
-    if (!user) return;
-    const expired = messages.filter(
-      (m) =>
-        m.status === "received" &&
-        m.batch_expires_at &&
-        secondsUntil(m.batch_expires_at, now) <= 0,
-    );
-    if (expired.length === 0) return;
-
-    // Guard: only fire once per second at most.
-    const token = getToken();
-    if (!token) return;
-
-    fetch("/api/batches/process", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then(() => {
-        // Refresh the list so the statuses update to processing/completed.
-        fetchMessages({ silent: true });
-      })
-      .catch(() => {
-        // non-fatal
-      });
-  }, [now, messages, user, fetchMessages]);
 
   useEffect(() => {
     const timer = setTimeout(() => setPage(1), 300);
@@ -350,12 +247,6 @@ export default function MessagesPage() {
                       <p className="text-sm font-semibold text-gray-900">
                         {msg.product_name}
                       </p>
-                      <LiveCountdownBadge
-                        expiresAt={msg.batch_expires_at}
-                        waitingTime={msg.waiting_time || 7}
-                        now={now}
-                        status={msg.status}
-                      />
                     </div>
                     <p className="text-xs text-gray-500">
                       Sender: {msg.sender_id}
@@ -379,10 +270,60 @@ export default function MessagesPage() {
                   </div>
                 </div>
 
-                {/* Message text */}
-                <p className="mb-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-800">
-                  {msg.message}
-                </p>
+                {/* ✅ Two-column view: LEFT = incoming message as-is,
+                  RIGHT = conversation history collected from the sheets */}
+                <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {/* LEFT: The message as it is */}
+                  <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                    <p className="mb-1.5 text-xs font-semibold text-blue-700">
+                      💬 Incoming Message
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm text-gray-800">
+                      {msg.message || "—"}
+                    </p>
+                  </div>
+
+                  {/* RIGHT: Conversation history from the sheets */}
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
+                    <p className="mb-1.5 text-xs font-semibold text-emerald-700">
+                      📚 Conversation History (from sheets)
+                    </p>
+                    {(() => {
+                      const history =
+                        msg.conversation_history ||
+                        msg.sent_payload?.conversation_history?.messages;
+                      if (history && history.length > 0) {
+                        return (
+                          <div className="space-y-1.5">
+                            {history.map((h, idx) => (
+                              <p
+                                key={idx}
+                                className="rounded-md bg-white px-2 py-1 text-xs text-gray-700"
+                              >
+                                {h}
+                              </p>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return (
+                        <p className="text-xs text-gray-400">
+                          No conversation history found for this sender
+                        </p>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* ❌ Failure reason (why this message failed) */}
+                {msg.status === "failed" && msg.failure_reason && (
+                  <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                    <p className="mb-1 text-xs font-semibold text-red-700">
+                      ❌ Failure reason
+                    </p>
+                    <p className="text-sm text-red-700">{msg.failure_reason}</p>
+                  </div>
+                )}
 
                 {/* Full outgoing payload sent to n8n */}
                 {msg.sent_payload && (
@@ -583,14 +524,64 @@ export default function MessagesPage() {
                 </div>
               </div>
 
-              <div className="mb-4">
-                <p className="mb-1.5 text-sm font-medium text-gray-700">
-                  Message
-                </p>
-                <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-800">
-                  {selectedMessage.message}
-                </p>
+              {/* ✅ Two-column view: LEFT = incoming message as-is,
+                  RIGHT = conversation history collected from the sheets */}
+              <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {/* LEFT: The message as it is */}
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                  <p className="mb-1.5 text-xs font-semibold text-blue-700">
+                    💬 Incoming Message
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm text-gray-800">
+                    {selectedMessage.message || "—"}
+                  </p>
+                </div>
+
+                {/* RIGHT: Conversation history from the sheets */}
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3">
+                  <p className="mb-1.5 text-xs font-semibold text-emerald-700">
+                    📚 Conversation History (from sheets)
+                  </p>
+                  {(() => {
+                    const history =
+                      selectedMessage.conversation_history ||
+                      selectedMessage.sent_payload?.conversation_history
+                        ?.messages;
+                    if (history && history.length > 0) {
+                      return (
+                        <div className="space-y-1.5">
+                          {history.map((h, idx) => (
+                            <p
+                              key={idx}
+                              className="rounded-md bg-white px-2 py-1 text-xs text-gray-700"
+                            >
+                              {h}
+                            </p>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return (
+                      <p className="text-xs text-gray-400">
+                        No conversation history found for this sender
+                      </p>
+                    );
+                  })()}
+                </div>
               </div>
+
+              {/* ❌ Failure reason (why this message failed) */}
+              {selectedMessage.status === "failed" &&
+                selectedMessage.failure_reason && (
+                  <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
+                    <p className="mb-1 text-xs font-semibold text-red-700">
+                      ❌ Failure reason
+                    </p>
+                    <p className="text-sm text-red-700">
+                      {selectedMessage.failure_reason}
+                    </p>
+                  </div>
+                )}
 
               {/* Full outgoing payload sent to n8n */}
               {selectedMessage.sent_payload && (

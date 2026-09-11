@@ -12,7 +12,6 @@ export default function EditProductModal({ product, onClose, onSave, saving }) {
       price: parseFloat(formData.get("price")),
       quantity: parseInt(formData.get("quantity")),
       description: formData.get("description"),
-      waiting_time: parseInt(formData.get("waiting_time")) || 7,
       status: formData.get("status"),
     };
     onSave(data);
@@ -60,19 +59,6 @@ export default function EditProductModal({ product, onClose, onSave, saving }) {
               name="quantity"
               defaultValue={product.quantity}
               required
-              className="rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-gray-700">
-              Waiting Time (s)
-            </label>
-            <input
-              type="number"
-              name="waiting_time"
-              defaultValue={product.waiting_time || 7}
-              min="1"
-              max="30"
               className="rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>

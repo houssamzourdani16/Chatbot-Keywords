@@ -6,7 +6,6 @@ import Message from "@/lib/models/message";
 import Setting from "@/lib/models/setting";
 import { revalidatePath } from "next/cache";
 import jwt from "jsonwebtoken";
-import { resolveWaitingTime } from "@/lib/services/waiting-time.service";
 
 // ✅ Daily limits (matching the webhook routes). Read from admin Settings.
 const DEFAULT_TEST_LIMIT = 25;
@@ -130,8 +129,6 @@ export async function POST(request) {
       description,
       webhook_url,
       webhook_url_test,
-      waiting_time,
-      waiting_time_enabled,
       category,
       subcategory,
       name_ar,
@@ -202,15 +199,6 @@ export async function POST(request) {
 
     console.log(`✅ Unique API key generated: ${apiKey}`);
 
-    // ✅ Resolve the waiting time from Settings (default + max clamp).
-    //    The destructured `waiting_time` above holds the raw form value;
-    //    `resolvedWaitingTime` is the validated value (default + clamp).
-    //    If wait time is DISABLED the stored value is 0 (instant send).
-    const resolvedWaitingTime =
-      waiting_time_enabled === false
-        ? 0
-        : await resolveWaitingTime(waiting_time ?? null);
-
     // Create product
     const product = new Product({
       user_id: decoded.userId,
@@ -221,8 +209,6 @@ export async function POST(request) {
       api_key: apiKey,
       webhook_url: webhook_url || undefined,
       webhook_url_test: webhook_url_test || undefined,
-      waiting_time_enabled: waiting_time_enabled !== false,
-      waiting_time: resolvedWaitingTime,
       mode: "test", // ✅ Default to TEST mode
       category: category || "",
       subcategory: subcategory || "",

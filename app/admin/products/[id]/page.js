@@ -222,12 +222,6 @@ export default function ProductDetailPage() {
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Waiting Time</p>
-            <p className="text-sm font-medium text-gray-900">
-              {product.waiting_time || 7}s
-            </p>
-          </div>
-          <div>
             <p className="text-xs text-gray-500">Category</p>
             <p className="text-sm font-medium text-gray-900">
               {product.category || "—"}

@@ -280,12 +280,6 @@ export default function ProductDetailPage() {
               </p>
             </div>
             <div className="rounded-xl bg-slate-50 p-4">
-              <p className="text-xs text-slate-500">⏰ Waiting Time</p>
-              <p className="mt-1 text-xl font-bold text-slate-900">
-                {product.waiting_time || 7}s
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-4">
               <p className="text-xs text-slate-500">📝 Description</p>
               <p className="mt-1 text-sm text-slate-700">
                 {product.description || "—"}

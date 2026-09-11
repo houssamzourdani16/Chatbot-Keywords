@@ -63,18 +63,6 @@ const SETTING_GROUPS = [
     description: "Webhook processing configuration",
     fields: [
       {
-        key: "default_waiting_time",
-        label: "Default Waiting Time (s)",
-        type: "number",
-        default: "5",
-      },
-      {
-        key: "max_waiting_time",
-        label: "Max Waiting Time (s)",
-        type: "number",
-        default: "30",
-      },
-      {
         key: "batch_size_limit",
         label: "Batch Size Limit",
         type: "number",

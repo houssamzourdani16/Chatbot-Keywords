@@ -8,6 +8,7 @@ import Setting from "@/lib/models/setting";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
+import { saveMessage as saveConversationMessage } from "@/lib/services/conversation.service";
 
 // ✅ Messages are saved to batches and processed automatically (sent to n8n).
 export const maxDuration = 60;
@@ -232,6 +233,25 @@ export async function POST(request, { params }) {
     savedMessage.mode = "test";
     await savedMessage.save();
 
+    // ✅ Save to conversation history (MongoDB) IMMEDIATELY so every
+    //    message is collected by sender_id, even if the batch fails.
+    //    Non-fatal: if this fails, the message still processes.
+    try {
+      await saveConversationMessage({
+        user_id: owner._id,
+        product_id: product._id,
+        sender_id,
+        message: data.message,
+        raw_data: data,
+        mode: "test",
+      });
+    } catch (convError) {
+      console.error(
+        "⚠️ Failed to save conversation message:",
+        convError.message,
+      );
+    }
+
     console.log(
       `💾 Test message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}`,
     );
@@ -254,11 +274,9 @@ export async function POST(request, { params }) {
       );
     }
 
-    // ✅ Process the batch (send to n8n).
-    //    - If wait time ENABLED: do NOT force — the batch stays open and
-    //      the scheduler joins later messages from the same sender.
-    //    - If wait time DISABLED (0s): process immediately.
-    await processBatch(batch._id, { force: !batch.waiting_time });
+    // ✅ Process the batch (send to n8n) IMMEDIATELY (force = true) so
+    //    messages are sent right away — no wait time / debounce delay.
+    await processBatch(batch._id, { force: true });
 
     return NextResponse.json({
       success: true,

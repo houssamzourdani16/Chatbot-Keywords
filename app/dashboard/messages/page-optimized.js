@@ -23,52 +23,6 @@ const MODE_COLORS = {
   prod: "bg-indigo-100 text-indigo-700",
 };
 
-// ⏳ Live countdown badge
-function LiveCountdownBadge({ expiresAt, waitingTime, now, status }) {
-  function secondsUntil(expiresAt, now) {
-    if (!expiresAt) return null;
-    const diff = new Date(expiresAt).getTime() - now;
-    return Math.ceil(diff / 1000);
-  }
-
-  const secs = secondsUntil(expiresAt, now);
-
-  if (status && status !== "received") {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        ⏱️ {waitingTime}s
-      </span>
-    );
-  }
-
-  if (secs === null) {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        ⏱️ {waitingTime}s
-      </span>
-    );
-  }
-
-  if (secs <= 0) {
-    return (
-      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        ⏱️ {waitingTime}s
-      </span>
-    );
-  }
-
-  const urgent = secs <= 3;
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
-        urgent ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-      }`}
-    >
-      <span className="inline-block animate-pulse">⏳</span> {secs}s
-    </span>
-  );
-}
-
 export default function MessagesPage() {
   const { user, loading } = useProtectPage();
   const router = useRouter();
@@ -219,9 +173,6 @@ export default function MessagesPage() {
     }
   };
 
-  // ✅ Live countdown state
-  const [now, setNow] = useState(0);
-
   // ✅ Initial load: Fetch products + fast messages
   useEffect(() => {
     if (user) {
@@ -238,40 +189,6 @@ export default function MessagesPage() {
     }, 1000); // ✅ 1s instead of 2s (we can afford it now!)
     return () => clearInterval(interval);
   }, [user, fetchMessagesFast]);
-
-  // ✅ Live countdown ticker
-  useEffect(() => {
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // ✅ Auto-process when timer expires
-  useEffect(() => {
-    if (!user) return;
-    const token = getToken();
-    if (!token) return;
-
-    const expired = messages.filter(
-      (m) =>
-        m.status === "received" &&
-        m.batch_expires_at &&
-        new Date(m.batch_expires_at).getTime() - now <= 0,
-    );
-
-    if (expired.length === 0) return;
-
-    fetch("/api/batches/process", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
-      .then(() => {
-        fetchMessagesFast({ silent: true });
-      })
-      .catch(() => {
-        // non-fatal
-      });
-  }, [now, messages, user, fetchMessagesFast]);
 
   useEffect(() => {
     const timer = setTimeout(() => setPage(1), 300);
@@ -394,12 +311,6 @@ export default function MessagesPage() {
                       <p className="text-sm font-semibold text-gray-900">
                         {msg.product_name}
                       </p>
-                      <LiveCountdownBadge
-                        expiresAt={msg.batch_expires_at}
-                        waitingTime={msg.waiting_time || 7}
-                        now={now}
-                        status={msg.status}
-                      />
                     </div>
                     <p className="text-xs text-gray-500">
                       Sender: {msg.sender_id}

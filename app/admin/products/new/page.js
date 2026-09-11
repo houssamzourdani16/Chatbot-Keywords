@@ -9,8 +9,6 @@ export default function NewProductPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [waitEnabled, setWaitEnabled] = useState(true);
-
   const getToken = () => localStorage.getItem("accessToken");
 
   const handleSubmit = async (e) => {
@@ -25,10 +23,6 @@ export default function NewProductPage() {
       price: parseFloat(formData.get("price")),
       quantity: parseInt(formData.get("quantity")),
       description: formData.get("description"),
-      waiting_time_enabled: waitEnabled,
-      waiting_time: waitEnabled
-        ? parseInt(formData.get("waiting_time")) || 7
-        : 0,
       status: formData.get("status"),
     };
 
@@ -115,54 +109,6 @@ export default function NewProductPage() {
               className="rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-gray-700">
-              Wait Time
-            </label>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setWaitEnabled((v) => !v)}
-                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
-                  waitEnabled ? "bg-blue-600" : "bg-gray-300"
-                }`}
-                aria-pressed={waitEnabled}
-              >
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                    waitEnabled ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
-              <span
-                className={`text-sm font-semibold ${
-                  waitEnabled ? "text-blue-600" : "text-gray-400"
-                }`}
-              >
-                {waitEnabled ? "Wait" : "Without wait time"}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500">
-              {waitEnabled
-                ? "Wait before sending messages"
-                : "Send instantly (no wait)"}
-            </p>
-          </div>
-          {waitEnabled && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-gray-700">
-                Waiting Time (s)
-              </label>
-              <input
-                type="number"
-                name="waiting_time"
-                defaultValue="7"
-                min="1"
-                max="30"
-                className="rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-          )}
           <div className="flex flex-col gap-1.5 sm:col-span-2">
             <label className="text-sm font-medium text-gray-700">
               Description

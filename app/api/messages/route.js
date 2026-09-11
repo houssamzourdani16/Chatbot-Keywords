@@ -7,6 +7,7 @@ import Batch from "@/lib/models/batch";
 import jwt from "jsonwebtoken";
 import { getKeywordsForList } from "@/lib/services/keyword-list-service";
 import { detectKeywordsInText } from "@/lib/services/keyword-detection.service";
+import { getBySender as getConversationBySender } from "@/lib/services/conversation.service";
 
 // GET - Fetch the latest messages for the logged-in user across all their
 // products, with live status. Used by the dashboard "Live Messages" panel.
@@ -31,14 +32,12 @@ export async function GET(request) {
 
     // Get the user's products (to map product_id -> name)
     const products = await Product.find({ user_id: decoded.userId })
-      .select("_id name keyword_list_id waiting_time")
+      .select("_id name keyword_list_id")
       .lean();
     const productIds = products.map((p) => p._id);
     const productMap = {};
-    const productWaitMap = {};
     products.forEach((p) => {
       productMap[p._id.toString()] = p.name;
-      productWaitMap[p._id.toString()] = p.waiting_time || 7;
     });
 
     // Build the message query
@@ -68,16 +67,15 @@ export async function GET(request) {
     if (batchIds.length > 0) {
       try {
         const batches = await Batch.find({ _id: { $in: batchIds } })
-          .select("_id expires_at status sent_payload waiting_time")
+          .select("_id expires_at status sent_payload failure_reason")
           .lean();
         batches.forEach((b) => {
           batchInfoMap[b._id.toString()] = {
             expires_at: b.expires_at,
             status: b.status,
             sent_payload: b.sent_payload || null,
-            // ✅ The wait time stored ON this batch — the SAME for every
-            //    message in this batch (and thereby for the same sender).
-            waiting_time: b.waiting_time || null,
+            // ✅ Why the batch failed (if it did).
+            failure_reason: b.failure_reason || null,
           };
         });
       } catch (e) {
@@ -142,6 +140,24 @@ export async function GET(request) {
       }
     }
 
+    // ✅ Fetch conversation history from the linked sheets for each unique
+    //    sender. Cached per sender so we only hit the sheets once per page.
+    //    This makes the history available even for FAILED messages (which
+    //    don't have a sent_payload stored).
+    const conversationHistoryCache = {};
+    const uniqueSenders = [...new Set(messages.map((m) => m.sender_id))];
+    await Promise.all(
+      uniqueSenders.map(async (sid) => {
+        if (!sid) return;
+        try {
+          const res = await getConversationBySender(sid);
+          conversationHistoryCache[sid] = res.messages || [];
+        } catch (e) {
+          conversationHistoryCache[sid] = [];
+        }
+      }),
+    );
+
     const enriched = messages.map((m) => {
       const productKey = m.product_id?.toString();
       const rowsMap = keywordRowsByProduct[productKey] || {};
@@ -195,18 +211,12 @@ export async function GET(request) {
         batch_expires_at: batchInfo?.expires_at || null,
         batch_status: batchInfo?.status || null,
         sent_payload: batchInfo?.sent_payload || null,
+        failure_reason: batchInfo?.failure_reason || null,
+        // ✅ Conversation history from the linked sheets (always fetched,
+        //    even for failed messages).
+        conversation_history: conversationHistoryCache[m.sender_id] || [],
         product_id: m.product_id,
         product_name: productMap[productKey] || "Unknown",
-        // ✅ Use the PRODUCT'S waiting_time as the source of truth. This
-        //    ensures ALL messages from the same sender ALWAYS show the SAME
-        //    wait time, regardless of when they were processed or if
-        //    product settings changed. Fall back to batch value (should match),
-        //    then message value (for backwards compatibility with old records).
-        waiting_time:
-          productWaitMap[productKey] ||
-          batchInfo?.waiting_time ||
-          m.waiting_time ||
-          7,
         sender_id: m.sender_id,
         message: messageText,
         raw_data: m.raw_data || null,

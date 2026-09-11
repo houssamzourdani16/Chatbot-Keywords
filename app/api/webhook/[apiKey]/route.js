@@ -8,6 +8,7 @@ import Setting from "@/lib/models/setting";
 import { addMessageToBatch } from "@/lib/services/batch-service";
 import { detectKeywordsForProduct } from "@/lib/services/keyword-detection.service";
 import { processBatch } from "@/lib/services/batch-processor";
+import { saveMessage as saveConversationMessage } from "@/lib/services/conversation.service";
 
 // ✅ Messages are saved to batches and processed automatically (sent to n8n).
 export const maxDuration = 60;
@@ -296,6 +297,25 @@ export async function POST(request, { params }) {
       allDetectedKeywords = allDetectedKeywords.concat(detectedKeywords);
       allKeywordData = { ...allKeywordData, ...keywordData };
 
+      // ✅ Save to conversation history (MongoDB) IMMEDIATELY so every
+      //    message is collected, even if the batch fails to process.
+      //    Non-fatal: if this fails, the message still processes.
+      try {
+        await saveConversationMessage({
+          user_id: owner._id,
+          product_id: product._id,
+          sender_id,
+          message,
+          raw_data: data,
+          mode: "prod",
+        });
+      } catch (convError) {
+        console.error(
+          "⚠️ Failed to save conversation message:",
+          convError.message,
+        );
+      }
+
       console.log(
         `💾 Message ${savedMessage._id} added to batch ${batch._id} for sender ${sender_id}` +
           (detectedKeywords.length
@@ -331,13 +351,10 @@ export async function POST(request, { params }) {
 
     // ============================================
     // ✅ 6. PROCESS THE BATCH (send to n8n)
-    //    - If wait time is ENABLED (debounce > 0s), do NOT force. The
-    //      batch stays open and the scheduler (/api/batches/process) picks
-    //      it up once expires_at passes, JOINING all messages that landed
-    //      from the same sender within the window.
-    //    - If wait time is DISABLED (0s), process immediately.
+    //    Process IMMEDIATELY (force = true) so messages are sent to n8n
+    //    right away — no wait time / debounce delay.
     // ============================================
-    await processBatch(lastBatch._id, { force: !lastBatch.waiting_time });
+    await processBatch(lastBatch._id, { force: true });
 
     return NextResponse.json({
       success: true,

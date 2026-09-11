@@ -9,6 +9,7 @@ import Product from "@/lib/models/product";
 import Message from "@/lib/models/message";
 import Batch from "@/lib/models/batch"; // ✅ Import Batch for expires_at
 import jwt from "jsonwebtoken";
+import { getBySender as getConversationBySender } from "@/lib/services/conversation.service";
 
 export async function GET(request) {
   try {
@@ -57,7 +58,7 @@ export async function GET(request) {
     const [messages, total] = await Promise.all([
       Message.find(messageQuery)
         .select(
-          "_id batch_id sender_id product_id status created_at message waiting_time mode detected_keywords keyword_data",
+          "_id batch_id sender_id product_id status created_at incoming_message raw_data mode detected_keywords keyword_data",
         ) // ✅ Essential fields + stored keyword data
         .sort({ created_at: -1 })
         .skip(skip)
@@ -72,12 +73,13 @@ export async function GET(request) {
     if (batchIds.length > 0) {
       try {
         const batches = await Batch.find({ _id: { $in: batchIds } })
-          .select("_id expires_at status")
+          .select("_id expires_at status failure_reason")
           .lean();
         batches.forEach((b) => {
           batchInfoMap[b._id.toString()] = {
             expires_at: b.expires_at,
             status: b.status,
+            failure_reason: b.failure_reason || null,
           };
         });
       } catch (e) {
@@ -85,24 +87,48 @@ export async function GET(request) {
       }
     }
 
+    // ✅ Fetch conversation history from the linked sheets (or DB fallback)
+    //    for each unique sender, cached per sender.
+    const conversationHistoryCache = {};
+    const uniqueSenders = [...new Set(messages.map((m) => m.sender_id))];
+    await Promise.all(
+      uniqueSenders.map(async (sid) => {
+        if (!sid) return;
+        try {
+          const res = await getConversationBySender(sid);
+          conversationHistoryCache[sid] = res.messages || [];
+        } catch {
+          conversationHistoryCache[sid] = [];
+        }
+      }),
+    );
+
     // ✅ Minimal enrichment: just map to product names + batch info
     const enriched = messages.map((m) => {
       const productKey = m.product_id?.toString();
       const batchInfo = m.batch_id
         ? batchInfoMap[m.batch_id.toString()] || null
         : null;
+      // ✅ Extract the message text (supports simple + Meta/Facebook formats)
+      const messageText =
+        m.incoming_message ||
+        m.raw_data?.message ||
+        m.raw_data?.text ||
+        m.raw_data?.entry?.[0]?.messaging?.[0]?.message?.text ||
+        "";
       return {
         id: m._id,
         batch_id: m.batch_id,
         batch_expires_at: batchInfo?.expires_at || null, // ✅ NEEDED for countdown timer!
         batch_status: batchInfo?.status || null,
+        failure_reason: batchInfo?.failure_reason || null,
+        conversation_history: conversationHistoryCache[m.sender_id] || [],
         sender_id: m.sender_id,
         product_id: m.product_id,
         product_name: productMap[productKey] || "Unknown",
         status: m.status,
         mode: m.mode,
-        waiting_time: m.waiting_time || 7,
-        message: m.message || "",
+        message: messageText,
         created_at: m.created_at,
         // ✅ Include the STORED keyword data (already on the document).
         //    No re-detection or Google Sheets fetch — just pass through.
