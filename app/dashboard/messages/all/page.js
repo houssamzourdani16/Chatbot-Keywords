@@ -29,6 +29,128 @@ const MODE_COLORS = {
   prod: "bg-indigo-100 text-indigo-700",
 };
 
+// ============================================================
+// 🧩 RAW DATA VIEWER
+//    Renders the full Messenger API payload with clear visual
+//    separation between every top-level object. Each key becomes
+//    its own labeled section. Nested objects are shown as
+//    formatted JSON inside a scrollable code block.
+// ============================================================
+
+// Try to parse a JSON string; returns the parsed value or null.
+function tryParseJson(str) {
+  if (typeof str !== "string") return null;
+  const trimmed = str.trim();
+  if (!trimmed) return null;
+  if (trimmed[0] !== "{" && trimmed[0] !== "[" && trimmed[0] !== '"') {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+// Convert literal "\n" (backslash-n) sequences into real newlines so
+// strings like "واش\nسلم\nبخير" display as a full multi-line string
+// instead of showing the escape characters.
+function formatDisplayString(str) {
+  if (typeof str !== "string") return str;
+  return str.replace(/\\n/g, "\n");
+}
+
+// A single labeled section wrapper.
+function Section({ title, children, accent = "gray" }) {
+  const accentMap = {
+    gray: "border-gray-700 bg-gray-800/60",
+    blue: "border-blue-700 bg-blue-900/30",
+    green: "border-emerald-700 bg-emerald-900/30",
+    purple: "border-purple-700 bg-purple-900/30",
+    amber: "border-amber-700 bg-amber-900/30",
+    red: "border-red-700 bg-red-900/30",
+  };
+  return (
+    <div
+      className={`rounded-md border p-2 ${accentMap[accent] || accentMap.gray}`}
+    >
+      <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-300">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+// Render a single key/value pair as its own section.
+function KeyValueSection({ label, value }) {
+  // Try to parse JSON strings so nested objects get separated too.
+  const parsed = tryParseJson(value);
+  const display = parsed !== null ? parsed : value;
+
+  return (
+    <Section title={label}>
+      {typeof display === "object" && display !== null ? (
+        <RawDataViewer data={display} />
+      ) : (
+        <pre className="whitespace-pre-wrap wrap-break-word font-mono text-[10px] leading-relaxed text-emerald-300">
+          {formatDisplayString(String(display))}
+        </pre>
+      )}
+    </Section>
+  );
+}
+
+function RawDataViewer({ data }) {
+  if (data === null || data === undefined) {
+    return <p className="text-xs text-gray-400">—</p>;
+  }
+
+  // If it's a plain string, try to parse it as JSON first.
+  if (typeof data === "string") {
+    const parsed = tryParseJson(data);
+    if (parsed !== null) {
+      return <RawDataViewer data={parsed} />;
+    }
+    return (
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap wrap-break-word font-mono text-[10px] leading-relaxed text-emerald-300">
+        {formatDisplayString(data)}
+      </pre>
+    );
+  }
+
+  // If it's an array, show each item as a separate block.
+  if (Array.isArray(data)) {
+    return (
+      <div className="space-y-2">
+        {data.map((item, i) => (
+          <Section key={i} title={`Item ${i + 1}`}>
+            <RawDataViewer data={item} />
+          </Section>
+        ))}
+      </div>
+    );
+  }
+
+  // Object: render each key as its own separated section.
+  if (typeof data === "object") {
+    const entries = Object.entries(data);
+    return (
+      <div className="space-y-2">
+        {entries.map(([key, value]) => (
+          <KeyValueSection key={key} label={key} value={value} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-[10px] leading-relaxed text-emerald-300">
+      {formatDisplayString(String(data))}
+    </pre>
+  );
+}
+
 export default function AllMessagesPage() {
   const { user, loading } = useProtectPage();
   const router = useRouter();
@@ -56,6 +178,18 @@ export default function AllMessagesPage() {
 
   // Detail modal
   const [selectedMessage, setSelectedMessage] = useState(null);
+
+  // Expanded raw-data cards (set of message ids)
+  const [expandedRaw, setExpandedRaw] = useState(new Set());
+
+  const toggleRaw = (id) => {
+    setExpandedRaw((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const getToken = () => localStorage.getItem("accessToken");
 
@@ -114,34 +248,56 @@ export default function AllMessagesPage() {
       if (!silent) setLoadingMessages(true);
       setError("");
       try {
-        const params = new URLSearchParams({ page, limit: "20" });
-        if (keywordFilter) params.set("keyword", keywordFilter);
-        if (senderFilter) params.set("senderId", senderFilter);
-        if (fromFilter) params.set("from", fromFilter);
-        if (toFilter) params.set("to", toFilter);
-        if (statusFilter) params.set("status", statusFilter);
-        if (productFilter) params.set("productId", productFilter);
+        const buildParams = (pg) => {
+          const params = new URLSearchParams({ page: String(pg), limit: "50" });
+          if (keywordFilter) params.set("keyword", keywordFilter);
+          if (senderFilter) params.set("senderId", senderFilter);
+          if (fromFilter) params.set("from", fromFilter);
+          if (toFilter) params.set("to", toFilter);
+          if (statusFilter) params.set("status", statusFilter);
+          if (productFilter) params.set("productId", productFilter);
+          return params;
+        };
 
-        const res = await fetch(`/api/messages?${params}`, {
+        // First page to learn total pages.
+        const firstRes = await fetch(`/api/messages?${buildParams(1)}`, {
           headers: { Authorization: `Bearer ${getToken()}` },
         });
-        const data = await res.json();
-        if (data.success) {
-          setMessages(data.messages);
-          setTotalPages(data.totalPages || 1);
-          setTotal(data.total || 0);
-          // Clear selection of ids no longer present
-          const ids = new Set(data.messages.map((m) => m.id));
-          setSelected((prev) => {
-            const next = new Set();
-            prev.forEach((id) => {
-              if (ids.has(id)) next.add(id);
-            });
-            return next;
-          });
-        } else {
-          setError(data.error || "Failed to load messages");
+        const firstData = await firstRes.json();
+        if (!firstData.success) {
+          setError(firstData.error || "Failed to load messages");
+          return;
         }
+
+        let allMessages = firstData.messages || [];
+        const totalPages = firstData.totalPages || 1;
+
+        // If a sender is specified, fetch ALL pages so we get every
+        // message saved for that sender across the whole database.
+        if (senderFilter && totalPages > 1) {
+          const rest = [];
+          for (let pg = 2; pg <= totalPages; pg++) {
+            const res = await fetch(`/api/messages?${buildParams(pg)}`, {
+              headers: { Authorization: `Bearer ${getToken()}` },
+            });
+            const data = await res.json();
+            if (data.success && data.messages) rest.push(...data.messages);
+          }
+          allMessages = [...allMessages, ...rest];
+        }
+
+        setMessages(allMessages);
+        setTotalPages(senderFilter ? 1 : totalPages);
+        setTotal(firstData.total || 0);
+        // Clear selection of ids no longer present
+        const ids = new Set(allMessages.map((m) => m.id));
+        setSelected((prev) => {
+          const next = new Set();
+          prev.forEach((id) => {
+            if (ids.has(id)) next.add(id);
+          });
+          return next;
+        });
       } catch (err) {
         setError("Failed to load messages");
       } finally {
@@ -149,7 +305,6 @@ export default function AllMessagesPage() {
       }
     },
     [
-      page,
       keywordFilter,
       senderFilter,
       fromFilter,
@@ -350,13 +505,13 @@ export default function AllMessagesPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
+                className="flex flex-col rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-shadow hover:shadow-md"
               >
-                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
@@ -394,8 +549,8 @@ export default function AllMessagesPage() {
                 </div>
 
                 {/* Message text */}
-                <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-                  <p className="mb-1.5 text-xs font-semibold text-blue-700">
+                <div className="mb-2 rounded-md border border-blue-100 bg-blue-50/50 p-2">
+                  <p className="mb-1 text-xs font-semibold text-blue-700">
                     💬 Message
                   </p>
                   <p className="whitespace-pre-wrap text-sm text-gray-800">
@@ -404,16 +559,16 @@ export default function AllMessagesPage() {
                 </div>
 
                 {/* Keywords */}
-                <div className="mb-3">
-                  <p className="mb-1.5 text-xs font-medium text-gray-500">
+                <div className="mb-2">
+                  <p className="mb-1 text-xs font-medium text-gray-500">
                     🏷️ Keywords
                   </p>
                   {msg.detected_keywords && msg.detected_keywords.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1">
                       {msg.detected_keywords.map((kw) => (
                         <span
                           key={kw}
-                          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2.5 py-0.5 text-xs font-semibold text-white"
+                          className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white"
                         >
                           {kw}
                         </span>
@@ -424,9 +579,45 @@ export default function AllMessagesPage() {
                   )}
                 </div>
 
+                {/* Conversation history (all messages from this sender) */}
+                {msg.conversation_history &&
+                  msg.conversation_history.length > 0 && (
+                    <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 p-2">
+                      <p className="mb-1 text-xs font-semibold text-gray-700">
+                        💬 Conversation history (
+                        {msg.conversation_history.length})
+                      </p>
+                      <div className="max-h-40 space-y-1 overflow-y-auto">
+                        {msg.conversation_history.map((item, idx) => {
+                          // ✅ Support both plain strings (old payloads)
+                          //    and { text, created_at } objects (new API)
+                          const text =
+                            typeof item === "string" ? item : item?.text || "";
+                          const ts =
+                            typeof item === "string" ? null : item?.created_at;
+                          return (
+                            <div
+                              key={idx}
+                              className="rounded border border-gray-200 bg-white px-2 py-1"
+                            >
+                              <p className="whitespace-pre-wrap text-xs text-gray-700">
+                                {formatDisplayString(String(text))}
+                              </p>
+                              {ts && (
+                                <p className="mt-0.5 text-[10px] text-gray-400">
+                                  🕐 {new Date(ts).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                 {/* Failure reason */}
                 {msg.status === "failed" && msg.failure_reason && (
-                  <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                  <div className="mb-2 rounded-md border border-red-200 bg-red-50 p-2">
                     <p className="mb-1 text-xs font-semibold text-red-700">
                       ❌ Failure reason
                     </p>
@@ -434,8 +625,58 @@ export default function AllMessagesPage() {
                   </div>
                 )}
 
+                {/* Full raw data toggle */}
+                <button
+                  onClick={() => toggleRaw(msg.id)}
+                  className="mb-2 flex w-full items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                >
+                  <span>📦 Full data (product + Messenger API)</span>
+                  <span>{expandedRaw.has(msg.id) ? "▲ Hide" : "▼ Show"}</span>
+                </button>
+
+                {expandedRaw.has(msg.id) && (
+                  <div className="mb-2 space-y-2">
+                    {/* Product info */}
+                    <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
+                      <p className="mb-1 text-xs font-semibold text-gray-700">
+                        🏷️ Product information
+                      </p>
+                      <div className="grid grid-cols-1 gap-1 text-xs text-gray-600">
+                        <p>
+                          <span className="font-medium">Name:</span>{" "}
+                          {msg.product_name || "—"}
+                        </p>
+                        <p>
+                          <span className="font-medium">Product ID:</span>{" "}
+                          {msg.product_id || "—"}
+                        </p>
+                        <p>
+                          <span className="font-medium">Batch ID:</span>{" "}
+                          {msg.batch_id || "—"}
+                        </p>
+                        <p>
+                          <span className="font-medium">Mode:</span>{" "}
+                          {msg.mode || "—"}
+                        </p>
+                        <p>
+                          <span className="font-medium">Status:</span>{" "}
+                          {msg.status || "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Full Messenger API payload */}
+                    <div className="rounded-md border border-gray-200 bg-gray-900 p-2">
+                      <p className="mb-1 text-xs font-semibold text-gray-300">
+                        📡 Full Messenger API data (raw_data)
+                      </p>
+                      <RawDataViewer data={msg.raw_data} />
+                    </div>
+                  </div>
+                )}
+
                 {/* Footer */}
-                <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                <div className="mt-auto flex items-center justify-between border-t border-gray-100 pt-2">
                   <p className="text-xs text-gray-400">
                     {new Date(msg.created_at).toLocaleString()}
                   </p>
@@ -536,6 +777,42 @@ export default function AllMessagesPage() {
                   {selectedMessage.message || "—"}
                 </p>
               </div>
+
+              {/* Conversation history (all messages from this sender) */}
+              {selectedMessage.conversation_history &&
+                selectedMessage.conversation_history.length > 0 && (
+                  <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p className="mb-1.5 text-sm font-medium text-gray-700">
+                      💬 Conversation history (
+                      {selectedMessage.conversation_history.length})
+                    </p>
+                    <div className="max-h-60 space-y-1.5 overflow-y-auto">
+                      {selectedMessage.conversation_history.map((item, idx) => {
+                        // ✅ Support both plain strings (old payloads)
+                        //    and { text, created_at } objects (new API)
+                        const text =
+                          typeof item === "string" ? item : item?.text || "";
+                        const ts =
+                          typeof item === "string" ? null : item?.created_at;
+                        return (
+                          <div
+                            key={idx}
+                            className="rounded border border-gray-200 bg-white px-2.5 py-1.5"
+                          >
+                            <p className="whitespace-pre-wrap text-xs text-gray-700">
+                              {formatDisplayString(String(text))}
+                            </p>
+                            {ts && (
+                              <p className="mt-0.5 text-[10px] text-gray-400">
+                                🕐 {new Date(ts).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
               {selectedMessage.status === "failed" &&
                 selectedMessage.failure_reason && (
@@ -642,6 +919,43 @@ export default function AllMessagesPage() {
                 Received:{" "}
                 {new Date(selectedMessage.created_at).toLocaleString()}
               </p>
+
+              {/* Product info */}
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="mb-1.5 text-sm font-medium text-gray-700">
+                  🏷️ Product information
+                </p>
+                <div className="grid grid-cols-1 gap-1 text-xs text-gray-600">
+                  <p>
+                    <span className="font-medium">Name:</span>{" "}
+                    {selectedMessage.product_name || "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Product ID:</span>{" "}
+                    {selectedMessage.product_id || "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Batch ID:</span>{" "}
+                    {selectedMessage.batch_id || "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Mode:</span>{" "}
+                    {selectedMessage.mode || "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium">Status:</span>{" "}
+                    {selectedMessage.status || "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Full Messenger API payload */}
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-900 p-3">
+                <p className="mb-1.5 text-xs font-semibold text-gray-300">
+                  📡 Full Messenger API data (raw_data)
+                </p>
+                <RawDataViewer data={selectedMessage.raw_data} />
+              </div>
             </div>
           </div>
         </div>

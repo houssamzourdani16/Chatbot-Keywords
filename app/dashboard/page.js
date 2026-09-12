@@ -723,7 +723,7 @@ export default function DashboardPage() {
     { id: "products", label: "Products", icon: "📦", key: "2" },
     {
       id: "messages",
-      label: "Messages",
+      label: "Live Messages",
       icon: "💬",
       key: "3",
       href: "/dashboard/messages",

@@ -96,7 +96,7 @@ export async function GET(request) {
         if (!sid) return;
         try {
           const res = await getConversationBySender(sid);
-          conversationHistoryCache[sid] = res.messages || [];
+          conversationHistoryCache[sid] = res.history || [];
         } catch {
           conversationHistoryCache[sid] = [];
         }

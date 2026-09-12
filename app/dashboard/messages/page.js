@@ -301,14 +301,27 @@ export default function MessagesPage() {
                       if (history && history.length > 0) {
                         return (
                           <div className="space-y-1.5">
-                            {history.map((h, idx) => (
-                              <p
-                                key={idx}
-                                className="rounded-md bg-white px-2 py-1 text-xs text-gray-700"
-                              >
-                                {h}
-                              </p>
-                            ))}
+                            {history.map((h, idx) => {
+                              // ✅ Support both plain strings (old payloads)
+                              //    and { text, created_at } objects (new API)
+                              const text =
+                                typeof h === "string" ? h : h?.text || "";
+                              const ts =
+                                typeof h === "string" ? null : h?.created_at;
+                              return (
+                                <div
+                                  key={idx}
+                                  className="rounded-md bg-white px-2 py-1 text-xs text-gray-700"
+                                >
+                                  <p className="whitespace-pre-wrap">{text}</p>
+                                  {ts && (
+                                    <p className="mt-0.5 text-[10px] text-gray-400">
+                                      🕐 {new Date(ts).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       }
@@ -556,14 +569,27 @@ export default function MessagesPage() {
                     if (history && history.length > 0) {
                       return (
                         <div className="space-y-1.5">
-                          {history.map((h, idx) => (
-                            <p
-                              key={idx}
-                              className="rounded-md bg-white px-2 py-1 text-xs text-gray-700"
-                            >
-                              {h}
-                            </p>
-                          ))}
+                          {history.map((h, idx) => {
+                            // ✅ Support both plain strings (old payloads)
+                            //    and { text, created_at } objects (new API)
+                            const text =
+                              typeof h === "string" ? h : h?.text || "";
+                            const ts =
+                              typeof h === "string" ? null : h?.created_at;
+                            return (
+                              <div
+                                key={idx}
+                                className="rounded-md bg-white px-2 py-1 text-xs text-gray-700"
+                              >
+                                <p className="whitespace-pre-wrap">{text}</p>
+                                {ts && (
+                                  <p className="mt-0.5 text-[10px] text-gray-400">
+                                    🕐 {new Date(ts).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     }

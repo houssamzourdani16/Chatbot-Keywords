@@ -13,6 +13,11 @@ export default function AdminSidebar({ user }) {
     { href: "/admin/users", label: "👥 Users", icon: "👥" },
     { href: "/admin/webhooks", label: "🔗 Webhooks", icon: "🔗" },
     { href: "/admin/keywords", label: "🔑 Keywords", icon: "🔑" },
+    {
+      href: "/admin/unfound-keywords",
+      label: "🔍 Unfound Keywords",
+      icon: "🔍",
+    },
     { href: "/admin/google-sheets", label: "📊 Sheets Config", icon: "📊" },
     { href: "/admin/settings", label: "⚙️ Settings", icon: "⚙️" },
   ];
